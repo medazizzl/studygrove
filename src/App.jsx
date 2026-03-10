@@ -44,14 +44,22 @@ const ACHIEVEMENTS = [
 ];
 
 const SOUNDS = {
-  rain:      "https://www.soundjay.com/nature/sounds/rain-01.mp3",
-  fireplace: "https://www.soundjay.com/nature/sounds/fire-burning-1.mp3",
-  lofi:      "https://cdn.pixabay.com/audio/2022/10/16/audio_12a4d1d4a3.mp3",
-  ocean:     "https://www.soundjay.com/nature/sounds/ocean-wave-1.mp3",
-  cafe:      "https://cdn.pixabay.com/audio/2022/03/09/audio_c42571c7f9.mp3",
+  rain:      "https://cdn.pixabay.com/audio/2022/03/10/audio_7b43530921.mp3",
+  fireplace: "https://cdn.pixabay.com/audio/2022/03/10/audio_1a609e8b7d.mp3",
+  lofi:      "https://cdn.pixabay.com/audio/2024/02/28/audio_3b3a9c6640.mp3",
+  ocean:     "https://cdn.pixabay.com/audio/2021/09/06/audio_c518e2e304.mp3",
+  cafe:      "https://cdn.pixabay.com/audio/2022/10/30/audio_946c826417.mp3",
+  forest:    "https://cdn.pixabay.com/audio/2022/03/10/audio_270f49b2b0.mp3",
 };
 
-const SOUND_LABELS = { rain:"🌧 Rain", fireplace:"🔥 Fireplace", lofi:"🎵 Lo-fi", ocean:"🌊 Ocean", cafe:"☕ Café" };
+const SOUND_LABELS = { 
+  rain:"🌧 Rain", 
+  fireplace:"🔥 Fireplace", 
+  lofi:"🎵 Lo-fi", 
+  ocean:"🌊 Ocean", 
+  cafe:"☕ Café",
+  forest:"🌿 Forest"
+};
 
 const fmtTime = (s) => {
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
@@ -256,6 +264,10 @@ export default function StudyGrove() {
         if(ns.total_minutes>=6000)ach=unlockAchievement("academic_weapon",ach);
         if(ns.invisible_minutes>=180)ach=unlockAchievement("ghost_student",ach);
         if(Object.keys(ns.subject_minutes||{}).length>=5)ach=unlockAchievement("multi_subject",ach);
+        if((ns.streak||0)>=3)ach=unlockAchievement("streak_3",ach);
+        if((ns.streak||0)>=7)ach=unlockAchievement("disciplined",ach);
+        if((ns.streak||0)>=30)ach=unlockAchievement("iron_will",ach);
+        if((ns.streak||0)>=7)ach=unlockAchievement("week_warrior",ach);
         ns.achievements=ach;
         await saveStats(ns);
       }
@@ -721,6 +733,26 @@ export default function StudyGrove() {
                 <button onClick={()=>{setFocusMode(true);if(!studying)startStop();}} style={{...css.btnO,fontSize:12,padding:"4px 12px"}}>🎯 Focus Mode</button>
               </div>
               {pomodoroMode&&<div style={{marginTop:10,height:4,background:T.border,borderRadius:2}}><div style={{height:"100%",background:T.accent,borderRadius:2,width:`${pomPct}%`,transition:"width 1s linear"}}/></div>}
+              
+              {/* Mini sound bar */}
+              <div style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${T.border}`}}>
+                <div style={{fontSize:11,color:T.sub,marginBottom:8,textTransform:"uppercase",letterSpacing:1}}>🎵 Ambient Sounds</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center"}}>
+                  {Object.entries(SOUND_LABELS).map(([id,label])=>(
+                    <button key={id} onClick={()=>playSound(id)} style={{...css.btnO,fontSize:11,padding:"4px 10px",background:activeSound===id?T.accent:"transparent",color:activeSound===id?"#000":T.sub,borderColor:activeSound===id?T.accent:T.border}}>
+                      {label}{activeSound===id?" ▶":""}
+                    </button>
+                  ))}
+                </div>
+                {activeSound&&(
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginTop:10,justifyContent:"center"}}>
+                    <span style={{fontSize:11,color:T.sub}}>Vol:</span>
+                    <input type="range" min="0" max="1" step="0.05" value={soundVolume} onChange={e=>changeVolume(parseFloat(e.target.value))} style={{width:120,accentColor:T.accent}}/>
+                    <span style={{fontSize:11,color:T.accent}}>{Math.round(soundVolume*100)}%</span>
+                    <button onClick={()=>playSound(activeSound)} style={{...css.btnO,fontSize:11,padding:"2px 8px",color:"#cc2222",borderColor:"#cc2222"}}>■ Stop</button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div style={css.card}>
@@ -1057,6 +1089,25 @@ export default function StudyGrove() {
                 <button onClick={()=>setInvisible(v=>!v)} style={{...css.btn,padding:"6px 14px",fontSize:12,background:invisible?"#cc2222":T.accent,color:invisible?"#fff":"#000"}}>{invisible?"👻 ON":"🟢 OFF"}</button>
               </div>
             </div>
+            <div style={css.card}>
+              <div style={{fontWeight:700,marginBottom:4}}>🎵 Ambient Sounds</div>
+              <div style={{fontSize:12,color:T.sub,marginBottom:12}}>Click to play · Click again to stop</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
+                {Object.entries(SOUND_LABELS).map(([id,label])=>(
+                  <button key={id} onClick={()=>playSound(id)} style={{...css.btnO,fontSize:12,padding:"6px 14px",background:activeSound===id?T.accent:"transparent",color:activeSound===id?"#000":T.sub,borderColor:activeSound===id?T.accent:T.border}}>
+                    {label}{activeSound===id?" ▶":""}
+                  </button>
+                ))}
+              </div>
+              {activeSound&&(
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:12,color:T.sub}}>Volume:</span>
+                  <input type="range" min="0" max="1" step="0.1" value={soundVolume} onChange={e=>changeVolume(parseFloat(e.target.value))} style={{flex:1,accentColor:T.accent}}/>
+                  <span style={{fontSize:12,color:T.accent}}>{Math.round(soundVolume*100)}%</span>
+                </div>
+              )}
+            </div>
+
             <div style={css.card}>
               <div style={{fontWeight:700,marginBottom:4}}>📖 About</div>
               <div style={{fontSize:12,color:T.sub}}>StudyGrove v2.0 · Built by Aziz ZL</div>
