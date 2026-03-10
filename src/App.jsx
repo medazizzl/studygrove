@@ -90,6 +90,12 @@ export default function StudyGrove() {
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
   const [newTaskSubject, setNewTaskSubject] = useState("Math");
+  const [friends, setFriends] = useState([]);
+  const [friendRequests, setFriendRequests] = useState([]);
+  const [friendSearch, setFriendSearch] = useState("");
+  const [friendSearchResult, setFriendSearchResult] = useState(null);
+  const [friendSearchError, setFriendSearchError] = useState("");
+  const [friendSearchLoading, setFriendSearchLoading] = useState(false);
   const [group, setGroup] = useState(null);
   const [groupMembers, setGroupMembers] = useState([]);
   const [messages, setMessages] = useState([]);
@@ -122,6 +128,7 @@ export default function StudyGrove() {
     loadProfile();
     loadTasks();
     loadGroup();
+    loadFriends();
   },[authUser]);
 
   const loadProfile=async()=>{
@@ -277,9 +284,52 @@ export default function StudyGrove() {
     const{data,error}=await supabase.auth.signUp({email:regForm.email,password:regForm.password});
     if(error){setAuthError(error.message);setAuthLoading(false);return;}
     if(data.user){
-      await supabase.from("profiles").insert({id:data.user.id,username:regForm.username,email:regForm.email,stats:{total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0,night_sessions:0,early_sessions:0,groups_joined:0},subjects:DEFAULT_SUBJECTS,created_at:new Date().toISOString()});
+      const friendCode=Math.random().toString(36).substring(2,7).toUpperCase();
+      await supabase.from("profiles").insert({id:data.user.id,username:regForm.username,email:regForm.email,friend_code:friendCode,stats:{total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0,night_sessions:0,early_sessions:0,groups_joined:0},subjects:DEFAULT_SUBJECTS,created_at:new Date().toISOString()});
     }
     setAuthLoading(false);
+  };
+
+  const loadFriends=async()=>{
+    const{data:sent}=await supabase.from("friendships").select("*, profiles!friendships_receiver_id_fkey(*)").eq("sender_id",authUser.id).eq("status","accepted");
+    const{data:received}=await supabase.from("friendships").select("*, profiles!friendships_sender_id_fkey(*)").eq("receiver_id",authUser.id).eq("status","accepted");
+    const{data:pending}=await supabase.from("friendships").select("*, profiles!friendships_sender_id_fkey(*)").eq("receiver_id",authUser.id).eq("status","pending");
+    const sentFriends=(sent||[]).map(f=>f.profiles).filter(Boolean);
+    const receivedFriends=(received||[]).map(f=>f.profiles).filter(Boolean);
+    setFriends([...sentFriends,...receivedFriends]);
+    setFriendRequests((pending||[]).map(f=>({...f.profiles,friendship_id:f.id})).filter(Boolean));
+  };
+
+  const searchFriend=async()=>{
+    setFriendSearchError("");setFriendSearchResult(null);setFriendSearchLoading(true);
+    if(!friendSearch.trim()){setFriendSearchError("Enter a friend code");setFriendSearchLoading(false);return;}
+    const{data,error}=await supabase.from("profiles").select("*").eq("friend_code",friendSearch.toUpperCase()).single();
+    if(error||!data){setFriendSearchError("No user found with that code. Check for typos.");setFriendSearchLoading(false);return;}
+    if(data.id===authUser.id){setFriendSearchError("That's your own code!");setFriendSearchLoading(false);return;}
+    setFriendSearchResult(data);setFriendSearchLoading(false);
+  };
+
+  const sendFriendRequest=async(receiverId)=>{
+    const{error}=await supabase.from("friendships").insert({sender_id:authUser.id,receiver_id:receiverId,status:"pending",created_at:new Date().toISOString()});
+    if(error&&error.code!=="23505"){setFriendSearchError(error.message);return;}
+    setFriendSearchResult(null);setFriendSearch("");
+    setFriendSearchError("");
+    alert("Friend request sent!");
+  };
+
+  const acceptFriend=async(friendshipId)=>{
+    await supabase.from("friendships").update({status:"accepted"}).eq("id",friendshipId);
+    loadFriends();
+  };
+
+  const declineFriend=async(friendshipId)=>{
+    await supabase.from("friendships").delete().eq("id",friendshipId);
+    loadFriends();
+  };
+
+  const removeFriend=async(friendId)=>{
+    await supabase.from("friendships").delete().or(`and(sender_id.eq.${authUser.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${authUser.id})`);
+    loadFriends();
   };
 
   const handleLogout=async()=>{
@@ -549,7 +599,7 @@ export default function StudyGrove() {
       </div>
 
       <div style={{display:"flex",gap:4,padding:"10px 16px",overflowX:"auto",borderBottom:`1px solid ${T.border}`,background:T.surface,position:"sticky",top:57,zIndex:99}}>
-        {[["study","⏱ Study"],["group","👥 Group"],["leaderboard","🏆 Ranks"],["stats","📊 Stats"],["tasks","✅ Tasks"],["achievements","🎖 Badges"],["settings","⚙️ Settings"]].map(([t,l])=>(
+        {[["study","⏱ Study"],["group","👥 Group"],["friends","👤 Friends"],["leaderboard","🏆 Ranks"],["stats","📊 Stats"],["tasks","✅ Tasks"],["achievements","🎖 Badges"],["settings","⚙️ Settings"]].map(([t,l])=>(
           <button key={t} style={css.tBtn(tab===t)} onClick={()=>setTab(t)}>{l}</button>
         ))}
       </div>
@@ -668,7 +718,10 @@ export default function StudyGrove() {
 
                 <div style={css.card}>
                   <div style={{fontWeight:700,marginBottom:4}}>{group.name}</div>
-                  <div style={{fontSize:12,marginBottom:4}}>Code: <strong style={{color:T.accent,letterSpacing:2}}>{group.code}</strong></div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+                    <span style={{fontSize:12}}>Group Code: <strong style={{color:T.accent,letterSpacing:2}}>{group.code}</strong></span>
+                    <button onClick={()=>{navigator.clipboard.writeText(group.code||"");alert("Group code copied!");}} style={{...css.btn,padding:"3px 10px",fontSize:11,borderRadius:8}}>📋 Copy</button>
+                  </div>
                   <div style={{fontSize:11,color:T.sub,marginBottom:16}}>Share this code with friends to invite them</div>
                   {groupMembers.map((m,i)=>{
                     const online=onlineMembers.find(o=>o.user_id===m.id);
@@ -785,6 +838,85 @@ export default function StudyGrove() {
           </div>
         )}
 
+        {tab==="friends"&&(
+          <div>
+            {/* Pending requests */}
+            {friendRequests.length>0&&(
+              <div style={{...css.card,border:`1.5px solid #f59e0b`}}>
+                <div style={{fontWeight:700,marginBottom:12,color:"#f59e0b"}}>📬 Friend Requests ({friendRequests.length})</div>
+                {friendRequests.map(r=>(
+                  <div key={r.friendship_id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${T.border}`}}>
+                    <div style={css.av()}>{(r.username||"?")[0].toUpperCase()}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:600,fontSize:14}}>{r.username}</div>
+                      <div style={{fontSize:11,color:T.sub}}>#{r.friend_code}</div>
+                    </div>
+                    <button style={{...css.btn,padding:"6px 12px",fontSize:12,marginRight:6}} onClick={()=>acceptFriend(r.friendship_id)}>Accept</button>
+                    <button style={{...css.btnD,padding:"6px 12px",fontSize:12}} onClick={()=>declineFriend(r.friendship_id)}>Decline</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Search */}
+            <div style={css.card}>
+              <div style={{fontWeight:700,marginBottom:4}}>🔍 Add a Friend</div>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+                <span style={{fontSize:12,color:T.sub}}>Your code:</span>
+                <strong style={{color:T.accent,letterSpacing:3,fontSize:16}}>#{profile?.friend_code||"..."}</strong>
+                <button onClick={()=>{navigator.clipboard.writeText(profile?.friend_code||"");alert("Code copied!");}} style={{...css.btn,padding:"4px 12px",fontSize:11,borderRadius:8}}>📋 Copy</button>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <input style={{...css.input,flex:1}} placeholder="Enter friend code (e.g. AZ7K2)" value={friendSearch} onChange={e=>setFriendSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&searchFriend()}/>
+                <button style={css.btn} onClick={searchFriend}>{friendSearchLoading?"...":"Search"}</button>
+              </div>
+              {friendSearchError&&<div style={{color:"#ff6b6b",fontSize:12,marginTop:8}}>{friendSearchError}</div>}
+              {friendSearchResult&&(
+                <div style={{marginTop:12,padding:14,background:T.surface,borderRadius:12,border:`1px solid ${T.border}`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={css.av()}>{(friendSearchResult.username||"?")[0].toUpperCase()}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:15}}>{friendSearchResult.username}</div>
+                      <div style={{fontSize:12,color:T.sub}}>#{friendSearchResult.friend_code} · {fmtMins(friendSearchResult.stats?.total_minutes||0)} studied total</div>
+                    </div>
+                    <button style={{...css.btn,padding:"8px 16px",fontSize:13}} onClick={()=>sendFriendRequest(friendSearchResult.id)}>Add Friend</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Friends list */}
+            <div style={css.card}>
+              <div style={{fontWeight:700,marginBottom:12}}>👥 Friends ({friends.length})</div>
+              {friends.length===0&&<div style={{color:T.sub,fontSize:13}}>No friends yet. Share your code <strong style={{color:T.accent}}>#{profile?.friend_code}</strong> to get started!</div>}
+              {friends.map((f,i)=>{
+                const online=onlineMembers.find(o=>o.user_id===f.id);
+                return(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:`1px solid ${T.border}`}}>
+                    <div style={{position:"relative"}}>
+                      <div style={css.av()}>{(f.username||"?")[0].toUpperCase()}</div>
+                      <span style={{...css.dot(online?.status||"offline"),position:"absolute",bottom:0,right:0,border:`2px solid ${T.card}`}}/>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:14}}>{f.username}</div>
+                      <div style={{fontSize:11,color:T.sub,marginTop:2}}>
+                        {online?.status==="studying"?<span style={{color:T.accent}}>📖 Studying {online.subject}</span>:online?.status==="online"?"🟢 Online":"⚫ Offline"}
+                      </div>
+                      <div style={{display:"flex",gap:12,marginTop:6,flexWrap:"wrap"}}>
+                        <span style={{fontSize:11,color:T.sub}}>Today: <strong style={{color:T.text}}>{fmtMins(f.stats?.today_minutes||0)}</strong></span>
+                        <span style={{fontSize:11,color:T.sub}}>Week: <strong style={{color:T.text}}>{fmtMins(f.stats?.weekly_minutes||0)}</strong></span>
+                        <span style={{fontSize:11,color:T.sub}}>Total: <strong style={{color:T.accent}}>{fmtMins(f.stats?.total_minutes||0)}</strong></span>
+                        <span style={{fontSize:11,color:T.sub}}>🔥 {f.stats?.streak||0} streak</span>
+                      </div>
+                    </div>
+                    <button onClick={()=>removeFriend(f.id)} style={{background:"transparent",border:"none",color:T.sub,cursor:"pointer",fontSize:18}} title="Remove friend">×</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {tab==="achievements"&&(
           <div>
             <div style={{...css.card,marginBottom:16}}>
@@ -812,7 +944,14 @@ export default function StudyGrove() {
               <div style={{fontWeight:700,marginBottom:12}}>👤 Account</div>
               <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
                 <div style={{width:50,height:50,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:20,color:"#000"}}>{(profile?.username||"?")[0].toUpperCase()}</div>
-                <div><div style={{fontWeight:700,fontSize:16}}>{profile?.username}</div><div style={{fontSize:12,color:T.sub}}>{profile?.email}</div></div>
+                <div>
+                  <div style={{fontWeight:700,fontSize:16}}>{profile?.username}</div>
+                  <div style={{fontSize:12,color:T.sub}}>{profile?.email}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4,flexWrap:"wrap"}}>
+                    <span style={{fontSize:12,color:T.accent}}>Your code: <strong style={{letterSpacing:2}}>#{profile?.friend_code||"..."}</strong></span>
+                    <button onClick={()=>{navigator.clipboard.writeText(profile?.friend_code||"");alert("Code copied!");}} style={{...css.btn,padding:"3px 10px",fontSize:11,borderRadius:8}}>📋 Copy</button>
+                  </div>
+                </div>
               </div>
               <button style={css.btnD} onClick={handleLogout}>Sign Out</button>
             </div>
