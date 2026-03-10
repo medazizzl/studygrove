@@ -197,27 +197,34 @@ export default function StudyGrove() {
 
   const subscribeGroup=(gid)=>{
     if(channelRef.current)supabase.removeChannel(channelRef.current);
-    const ch=supabase.channel(`grp-${gid}`,{config:{presence:{key:authUser.id}}});
-    ch.on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`group_id=eq.${gid}`},p=>{
-      setMessages(prev=>[...prev,p.new]);
-      setTimeout(()=>chatBottomRef.current?.scrollIntoView({behavior:"smooth"}),100);
-      // In-app notification if not on group tab and not muted
-      if(p.new.user_id!==authUser?.id){
-        setNotificationsEnabled(prev=>{
-          if(prev&&!isGroupMuted(gid)){
-            setInAppNotif({text:p.new.text,username:p.new.username,type:"group"});
-            setTimeout(()=>setInAppNotif(null),4000);
-          }
-          return prev;
-        });
+    const ch=supabase.channel(`grp-${gid}`,{
+      config:{
+        broadcast:{self:false},
+        presence:{key:authUser.id}
       }
     });
+    // Real-time messages
+    ch.on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`group_id=eq.${gid}`},p=>{
+      setMessages(prev=>{
+        if(prev.find(m=>m.id===p.new.id))return prev; // dedupe
+        return [...prev,p.new];
+      });
+      setTimeout(()=>chatBottomRef.current?.scrollIntoView({behavior:"smooth"}),100);
+      // In-app notification
+      if(p.new.user_id!==authUser?.id&&notificationsEnabled&&!isGroupMuted(gid)){
+        setInAppNotif({text:p.new.text,username:p.new.username,type:"group"});
+        setTimeout(()=>setInAppNotif(null),4000);
+      }
+    });
+    // Presence
     ch.on("presence",{event:"sync"},()=>{
       const state=ch.presenceState();
       setOnlineMembers(Object.values(state).flat());
     });
     ch.subscribe(async(s)=>{
-      if(s==="SUBSCRIBED")await ch.track({user_id:authUser.id,username:profile?.username||"...",status:"online",subject:selectedSubject});
+      if(s==="SUBSCRIBED"){
+        await ch.track({user_id:authUser.id,username:profile?.username||"...",status:"online",subject:selectedSubject});
+      }
     });
     channelRef.current=ch;
   };
@@ -469,8 +476,12 @@ export default function StudyGrove() {
   const sendDM = async () => {
     if (!dmInput.trim() || !activeDM) return;
     const dmId = [authUser.id, activeDM.id].sort().join("_");
-    await supabase.from("direct_messages").insert({ dm_id: dmId, sender_id: authUser.id, receiver_id: activeDM.id, sender_username: profile?.username, text: dmInput, created_at: new Date().toISOString() });
+    const text=dmInput;
     setDmInput("");
+    const{data}=await supabase.from("direct_messages").insert({dm_id:dmId,sender_id:authUser.id,receiver_id:activeDM.id,sender_username:profile?.username,text,created_at:new Date().toISOString()}).select().single();
+    if(data){
+      setDmMessages(prev=>prev.find(m=>m.id===data.id)?prev:[...prev,data]);
+    }
   };
 
   const handleLogout=async()=>{
@@ -518,8 +529,13 @@ export default function StudyGrove() {
   const sendMessage=async()=>{
     if(!chatInput.trim()||!group)return;
     if(studying){setStudying(false);}
-    await supabase.from("messages").insert({group_id:group.id,user_id:authUser.id,username:profile?.username||"?",text:chatInput,created_at:new Date().toISOString()});
+    const text=chatInput;
     setChatInput("");
+    const{data}=await supabase.from("messages").insert({group_id:group.id,user_id:authUser.id,username:profile?.username||"?",text,created_at:new Date().toISOString()}).select().single();
+    if(data){
+      setMessages(prev=>prev.find(m=>m.id===data.id)?prev:[...prev,data]);
+      setTimeout(()=>chatBottomRef.current?.scrollIntoView({behavior:"smooth"}),100);
+    }
   };
 
   const addTask=async()=>{
