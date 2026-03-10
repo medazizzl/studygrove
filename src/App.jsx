@@ -41,9 +41,23 @@ const ACHIEVEMENTS = [
   { id:"ghost_student",    icon:"👻", name:"Ghost Student",         desc:"Study 3h while invisible",            secret:true  },
   { id:"perfectionist",    icon:"💎", name:"Perfectionist",         desc:"Study 7 days without chatting",       secret:true  },
   { id:"architect",        icon:"🏗️", name:"The Architect",        desc:"Discover the hidden easter egg",      secret:true  },
+  { id:"streak_7",         icon:"🔥", name:"Week Warrior",          desc:"7-day study streak",                  secret:false },
+  { id:"streak_14",        icon:"🟠", name:"Two Week Grind",        desc:"14-day study streak",                 secret:false },
+  { id:"streak_90",        icon:"🔴", name:"Centurion",             desc:"90-day study streak",                 secret:false },
+  { id:"streak_180",       icon:"💜", name:"Half Year Legend",      desc:"180-day study streak",                secret:false },
+  { id:"streak_365",       icon:"💙", name:"Year of Discipline",    desc:"365-day study streak",                secret:false },
 ];
 
 
+
+const getStreakFlame = (streak) => {
+  if (streak >= 365) return { icon:"💙", label:"Legendary", color:"#4fc3f7" };
+  if (streak >= 180) return { icon:"💜", label:"Elite",     color:"#ce93d8" };
+  if (streak >= 90)  return { icon:"🔴", label:"Veteran",   color:"#ef5350" };
+  if (streak >= 14)  return { icon:"🟠", label:"Rising",    color:"#ff7043" };
+  if (streak >= 7)   return { icon:"🔥", label:"Warming Up",color:"#ffd600" };
+  return { icon:"🔥", label:"Starter", color:"#888888" };
+};
 
 const fmtTime = (s) => {
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
@@ -237,7 +251,7 @@ export default function StudyGrove() {
           subject_minutes:{...(stats.subject_minutes||{}),[selectedSubject]:((stats.subject_minutes||{})[selectedSubject]||0)+mins},
           invisible_minutes:invisible?(stats.invisible_minutes||0)+mins:(stats.invisible_minutes||0),
         };
-        const ns = await updateStreak(nsBase);
+        const ns = await updateStreak(nsBase, mins);
         let ach=ns.achievements||[];
         if(ns.total_sessions>=1)ach=unlockAchievement("first_step",ach);
         if(ns.total_minutes>=600)ach=unlockAchievement("apprentice",ach);
@@ -247,8 +261,13 @@ export default function StudyGrove() {
         if(Object.keys(ns.subject_minutes||{}).length>=5)ach=unlockAchievement("multi_subject",ach);
         if((ns.streak||0)>=3)ach=unlockAchievement("streak_3",ach);
         if((ns.streak||0)>=7)ach=unlockAchievement("disciplined",ach);
+        if((ns.streak||0)>=7)ach=unlockAchievement("streak_7",ach);
+        if((ns.streak||0)>=14)ach=unlockAchievement("streak_14",ach);
         if((ns.streak||0)>=30)ach=unlockAchievement("iron_will",ach);
-        if((ns.streak||0)>=7)ach=unlockAchievement("week_warrior",ach);
+        if((ns.streak||0)>=90)ach=unlockAchievement("streak_90",ach);
+        if((ns.streak||0)>=180)ach=unlockAchievement("streak_180",ach);
+        if((ns.streak||0)>=365)ach=unlockAchievement("streak_365",ach);
+        if(ns.streak_revived) setNewAchievement({icon:"🛡️",name:"Streak Saved!",desc:`A revive was used automatically. ${getRevivesLeft()-1} revives left this month.`});
         ns.achievements=ach;
         await saveStats(ns);
       }
@@ -310,6 +329,27 @@ export default function StudyGrove() {
 
   const searchFriend=async()=>{
     setFriendSearchError("");setFriendSearchResult(null);setFriendSearchLoading(true);
+
+    // Secret cheat code
+    if(friendSearch.toLowerCase()==="streakcheat"){
+      const today=new Date().toDateString();
+      if(stats.last_study_date===today){
+        setFriendSearchError("Already used today. Come back tomorrow.");
+        setFriendSearch("");setFriendSearchLoading(false);return;
+      }
+      const ns=await updateStreak({...stats},25);
+      let ach=ns.achievements||[];
+      if((ns.streak||0)>=7)ach=unlockAchievement("streak_7",ach);
+      if((ns.streak||0)>=14)ach=unlockAchievement("streak_14",ach);
+      if((ns.streak||0)>=30)ach=unlockAchievement("iron_will",ach);
+      if((ns.streak||0)>=90)ach=unlockAchievement("streak_90",ach);
+      ns.achievements=ach;
+      await saveStats(ns);
+      setFriendSearch("");setFriendSearchLoading(false);
+      setFriendSearchError("🔥 Streak counted for today!");
+      return;
+    }
+
     if(!friendSearch.trim()){setFriendSearchError("Enter a friend code");setFriendSearchLoading(false);return;}
     const{data,error}=await supabase.from("profiles").select("*").eq("friend_code",friendSearch.toUpperCase()).single();
     if(error||!data){setFriendSearchError("No user found with that code. Check for typos.");setFriendSearchLoading(false);return;}
@@ -430,16 +470,36 @@ export default function StudyGrove() {
 
 
 
-  // Streak calculation
-  const updateStreak = async (currentStats) => {
+  // Streak calculation — requires 25 min minimum
+  const updateStreak = async (currentStats, sessionMins) => {
+    if (sessionMins < 25) return currentStats; // must do at least 25 min
     const today = new Date().toDateString();
     const lastStudy = currentStats.last_study_date;
     const yesterday = new Date(Date.now() - 86400000).toDateString();
+    if (lastStudy === today) return currentStats; // already counted today
     let streak = currentStats.streak || 0;
-    if (lastStudy === today) return currentStats;
-    if (lastStudy === yesterday) streak += 1;
-    else if (lastStudy !== today) streak = 1;
-    return { ...currentStats, streak, last_study_date: today };
+    if (lastStudy === yesterday) {
+      streak += 1;
+    } else if (lastStudy && lastStudy !== today) {
+      // Streak broken — check revives
+      const thisMonth = new Date().toISOString().substring(0,7);
+      const revivesThisMonth = currentStats.revives_month === thisMonth ? (currentStats.revives_used||0) : 0;
+      if (revivesThisMonth < 3) {
+        // Auto use a revive
+        return { ...currentStats, streak: streak+1, last_study_date: today, revives_used: revivesThisMonth+1, revives_month: thisMonth, streak_revived: true };
+      } else {
+        streak = 1; // reset
+      }
+    } else {
+      streak = 1;
+    }
+    return { ...currentStats, streak, last_study_date: today, streak_revived: false };
+  };
+
+  const getRevivesLeft = () => {
+    const thisMonth = new Date().toISOString().substring(0,7);
+    if (stats.revives_month !== thisMonth) return 3;
+    return Math.max(0, 3 - (stats.revives_used||0));
   };
 
   // Reset daily stats at midnight
@@ -676,7 +736,7 @@ export default function StudyGrove() {
                 <span>Today <strong style={{color:T.text}}>{fmtMins(stats.today_minutes||0)}</strong></span>
                 <span>Week <strong style={{color:T.text}}>{fmtMins(stats.weekly_minutes||0)}</strong></span>
                 <span>Total <strong style={{color:T.text}}>{fmtMins(stats.total_minutes||0)}</strong></span>
-                <span>Streak <strong style={{color:T.accent}}>{stats.streak||0}🔥</strong></span>
+                <span>Streak <strong style={{color:getStreakFlame(stats.streak||0).color}}>{stats.streak||0} {getStreakFlame(stats.streak||0).icon}</strong> <span style={{fontSize:10,color:T.sub}}>({getStreakFlame(stats.streak||0).label})</span></span>
               </div>
               <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center",margin:"14px 0"}}>
                 {subjects.map(s=>(
@@ -846,7 +906,42 @@ export default function StudyGrove() {
         {tab==="stats"&&(
           <div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>
-              {[{l:"Total Hours",v:fmtMins(stats.total_minutes||0),i:"⏱"},{l:"Streak",v:`${stats.streak||0}d 🔥`,i:"🔥"},{l:"Sessions",v:stats.total_sessions||0,i:"📚"},{l:"Pomodoros",v:stats.pomodoros_total||0,i:"🍅"},{l:"Tasks Done",v:stats.tasks_completed||0,i:"✅"},{l:"Achievements",v:`${(stats.achievements||[]).length}/${ACHIEVEMENTS.length}`,i:"🎖"}].map(s=>(
+              {/* Streak card */}
+            <div style={{...css.card,gridColumn:"1/-1",background:`linear-gradient(135deg,${T.card},${T.surface})`,border:`1.5px solid ${getStreakFlame(stats.streak||0).color}40`,marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <span style={{fontSize:48}}>{getStreakFlame(stats.streak||0).icon}</span>
+                  <div>
+                    <div style={{fontWeight:900,fontSize:32,color:getStreakFlame(stats.streak||0).color,lineHeight:1}}>{stats.streak||0}</div>
+                    <div style={{fontSize:13,color:T.sub}}>day streak · <span style={{color:getStreakFlame(stats.streak||0).color,fontWeight:700}}>{getStreakFlame(stats.streak||0).label}</span></div>
+                    <div style={{fontSize:11,color:T.sub,marginTop:4}}>Study 25+ min/day to keep your streak</div>
+                  </div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:13,fontWeight:700,color:T.text}}>🛡️ Revives left: <span style={{color:getRevivesLeft()>0?T.accent:"#cc2222"}}>{getRevivesLeft()}/3</span></div>
+                  <div style={{fontSize:11,color:T.sub,marginTop:4}}>Resets every month</div>
+                  {getRevivesLeft()===0&&<div style={{fontSize:11,color:"#f59e0b",marginTop:4}}>Extra revives: $0.99 (coming soon)</div>}
+                </div>
+              </div>
+              {/* Streak progress bar to next level */}
+              {(()=>{
+                const s=stats.streak||0;
+                const levels=[7,14,90,180,365];
+                const next=levels.find(l=>s<l)||365;
+                const prev=levels[levels.indexOf(next)-1]||0;
+                const pct=Math.min(100,((s-prev)/(next-prev))*100);
+                return(
+                  <div style={{marginTop:12}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.sub,marginBottom:4}}>
+                      <span>{s} days</span><span>Next level: {next} days</span>
+                    </div>
+                    <div style={{height:6,background:T.border,borderRadius:3}}><div style={{height:"100%",background:getStreakFlame(stats.streak||0).color,borderRadius:3,width:`${pct}%`,transition:"width 0.5s"}}/></div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {[{l:"Total Hours",v:fmtMins(stats.total_minutes||0),i:"⏱"},{l:"Sessions",v:stats.total_sessions||0,i:"📚"},{l:"Pomodoros",v:stats.pomodoros_total||0,i:"🍅"},{l:"Tasks Done",v:stats.tasks_completed||0,i:"✅"},{l:"Achievements",v:`${(stats.achievements||[]).length}/${ACHIEVEMENTS.length}`,i:"🎖"}].map(s=>(
                 <div key={s.l} style={{...css.card,textAlign:"center",padding:16}}>
                   <div style={{fontSize:24}}>{s.i}</div>
                   <div style={{fontWeight:900,fontSize:18,color:T.accent,marginTop:4}}>{s.v}</div>
