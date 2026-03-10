@@ -113,6 +113,17 @@ export default function StudyGrove() {
   const [friendSearchResult, setFriendSearchResult] = useState(null);
   const [friendSearchError, setFriendSearchError] = useState("");
   const [friendSearchLoading, setFriendSearchLoading] = useState(false);
+  const [nicknames, setNicknames] = useState(() => { try { return JSON.parse(localStorage.getItem("sg_nicknames")||"{}"); } catch { return {}; } });
+  const [editingNickname, setEditingNickname] = useState(null);
+  const [nicknameInput, setNicknameInput] = useState("");
+  const [mutedGroups, setMutedGroups] = useState(() => { try { return JSON.parse(localStorage.getItem("sg_muted_groups")||"{}"); } catch { return {}; } });
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() => localStorage.getItem("sg_notifs") !== "false");
+  const [inAppNotif, setInAppNotif] = useState(null);
+  const [activeDM, setActiveDM] = useState(null);
+  const [dmMessages, setDmMessages] = useState([]);
+  const [dmInput, setDmInput] = useState("");
+  const [mutedDMs, setMutedDMs] = useState(() => { try { return JSON.parse(localStorage.getItem("sg_muted_dms")||"{}"); } catch { return {}; } });
+  const [unreadDMs, setUnreadDMs] = useState({});
   const [group, setGroup] = useState(null);
   const [groupMembers, setGroupMembers] = useState([]);
   const [messages, setMessages] = useState([]);
@@ -130,6 +141,7 @@ export default function StudyGrove() {
   const pomRef = useRef(null);
   const chatBottomRef = useRef(null);
   const channelRef = useRef(null);
+  const dmChannelRef = useRef(null);
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
@@ -189,6 +201,16 @@ export default function StudyGrove() {
     ch.on("postgres_changes",{event:"INSERT",schema:"public",table:"messages",filter:`group_id=eq.${gid}`},p=>{
       setMessages(prev=>[...prev,p.new]);
       setTimeout(()=>chatBottomRef.current?.scrollIntoView({behavior:"smooth"}),100);
+      // In-app notification if not on group tab and not muted
+      if(p.new.user_id!==authUser?.id){
+        setNotificationsEnabled(prev=>{
+          if(prev&&!isGroupMuted(gid)){
+            setInAppNotif({text:p.new.text,username:p.new.username,type:"group"});
+            setTimeout(()=>setInAppNotif(null),4000);
+          }
+          return prev;
+        });
+      }
     });
     ch.on("presence",{event:"sync"},()=>{
       const state=ch.presenceState();
@@ -378,6 +400,77 @@ export default function StudyGrove() {
   const removeFriend=async(friendId)=>{
     await supabase.from("friendships").delete().or(`and(sender_id.eq.${authUser.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${authUser.id})`);
     loadFriends();
+  };
+
+  // Nickname helpers
+  const saveNickname = (friendId, name) => {
+    const updated = { ...nicknames, [friendId]: name };
+    setNicknames(updated);
+    localStorage.setItem("sg_nicknames", JSON.stringify(updated));
+    setEditingNickname(null);
+  };
+  const removeNickname = (friendId) => {
+    const updated = { ...nicknames };
+    delete updated[friendId];
+    setNicknames(updated);
+    localStorage.setItem("sg_nicknames", JSON.stringify(updated));
+  };
+  const displayName = (friend) => nicknames[friend.id] || friend.username;
+
+  // Mute helpers
+  const muteGroup = (groupId, duration) => {
+    const until = duration === "forever" ? "forever" : new Date(Date.now() + duration * 3600000).toISOString();
+    const updated = { ...mutedGroups, [groupId]: until };
+    setMutedGroups(updated);
+    localStorage.setItem("sg_muted_groups", JSON.stringify(updated));
+  };
+  const unmuteGroup = (groupId) => {
+    const updated = { ...mutedGroups };
+    delete updated[groupId];
+    setMutedGroups(updated);
+    localStorage.setItem("sg_muted_groups", JSON.stringify(updated));
+  };
+  const isGroupMuted = (groupId) => {
+    const until = mutedGroups[groupId];
+    if (!until) return false;
+    if (until === "forever") return true;
+    return new Date(until) > new Date();
+  };
+  const muteDM = (friendId, duration) => {
+    const until = duration === "forever" ? "forever" : new Date(Date.now() + duration * 3600000).toISOString();
+    const updated = { ...mutedDMs, [friendId]: until };
+    setMutedDMs(updated);
+    localStorage.setItem("sg_muted_dms", JSON.stringify(updated));
+  };
+  const isDMMuted = (friendId) => {
+    const until = mutedDMs[friendId];
+    if (!until) return false;
+    if (until === "forever") return true;
+    return new Date(until) > new Date();
+  };
+
+  // DM functions
+  const openDM = async (friend) => {
+    setActiveDM(friend);
+    setUnreadDMs(prev => ({ ...prev, [friend.id]: 0 }));
+    const dmId = [authUser.id, friend.id].sort().join("_");
+    const { data } = await supabase.from("direct_messages").select("*").eq("dm_id", dmId).order("created_at", { ascending: true }).limit(50);
+    if (data) setDmMessages(data);
+    // Subscribe to DM channel
+    if (dmChannelRef.current) supabase.removeChannel(dmChannelRef.current);
+    const ch = supabase.channel(`dm-${dmId}`);
+    ch.on("postgres_changes", { event: "INSERT", schema: "public", table: "direct_messages", filter: `dm_id=eq.${dmId}` }, p => {
+      setDmMessages(prev => [...prev, p.new]);
+    });
+    ch.subscribe();
+    dmChannelRef.current = ch;
+  };
+
+  const sendDM = async () => {
+    if (!dmInput.trim() || !activeDM) return;
+    const dmId = [authUser.id, activeDM.id].sort().join("_");
+    await supabase.from("direct_messages").insert({ dm_id: dmId, sender_id: authUser.id, receiver_id: activeDM.id, sender_username: profile?.username, text: dmInput, created_at: new Date().toISOString() });
+    setDmInput("");
   };
 
   const handleLogout=async()=>{
@@ -638,6 +731,61 @@ export default function StudyGrove() {
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;900&display=swap" rel="stylesheet"/>
       <div style={{position:"fixed",inset:0,background:`radial-gradient(ellipse at 20% 10%,${T.accent}10 0%,transparent 50%)`,pointerEvents:"none",zIndex:0}}/>
 
+      {/* In-app message notification */}
+      {inAppNotif&&(
+        <div onClick={()=>{setTab(inAppNotif.type==="group"?"group":"friends");setInAppNotif(null);}} style={{position:"fixed",top:20,left:"50%",transform:"translateX(-50%)",zIndex:1001,background:T.card,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"12px 20px",boxShadow:`0 0 30px rgba(0,0,0,0.5)`,cursor:"pointer",maxWidth:300,animation:"slideIn 0.3s ease"}}>
+          <div style={{fontSize:11,color:T.sub,marginBottom:4}}>💬 {inAppNotif.type==="group"?"Group message":"Direct message"}</div>
+          <div style={{fontWeight:700,fontSize:13,color:T.accent}}>{inAppNotif.username}</div>
+          <div style={{fontSize:13,color:T.text,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inAppNotif.text}</div>
+          <div style={{fontSize:11,color:T.sub,marginTop:4}}>Tap to open</div>
+        </div>
+      )}
+
+      {/* DM Modal */}
+      {activeDM&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{...css.card,width:"100%",maxWidth:420,height:500,display:"flex",flexDirection:"column"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <div style={css.av()}>{(activeDM.username||"?")[0].toUpperCase()}</div>
+                <div>
+                  <div style={{fontWeight:700}}>{displayName(activeDM)}</div>
+                  {nicknames[activeDM.id]&&<div style={{fontSize:11,color:T.sub}}>@{activeDM.username}</div>}
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                {isDMMuted(activeDM.id)
+                  ?<button style={{...css.btnO,fontSize:11,padding:"4px 10px"}} onClick={()=>{const u={...mutedDMs};delete u[activeDM.id];setMutedDMs(u);localStorage.setItem("sg_muted_dms",JSON.stringify(u));}}>🔔 Unmute</button>
+                  :<select style={{...css.input,width:"auto",fontSize:11,padding:"4px 8px"}} onChange={e=>{if(e.target.value)muteDM(activeDM.id,e.target.value);e.target.value="";}}>
+                    <option value="">🔕 Mute...</option>
+                    <option value="1">1 hour</option>
+                    <option value="8">8 hours</option>
+                    <option value="24">24 hours</option>
+                    <option value="forever">Forever</option>
+                  </select>
+                }
+                <button style={{...css.btnO,fontSize:11,padding:"4px 10px"}} onClick={()=>setActiveDM(null)}>✕ Close</button>
+              </div>
+            </div>
+            <div style={{flex:1,overflowY:"auto",paddingRight:4}}>
+              {dmMessages.length===0&&<div style={{color:T.sub,fontSize:13,textAlign:"center",marginTop:30}}>No messages yet. Say something! 👋</div>}
+              {dmMessages.map(m=>(
+                <div key={m.id} style={{marginBottom:10,textAlign:m.sender_id===authUser?.id?"right":"left"}}>
+                  <div style={{display:"inline-block",background:m.sender_id===authUser?.id?T.accent:T.surface,color:m.sender_id===authUser?.id?"#000":T.text,padding:"8px 12px",borderRadius:12,fontSize:13,maxWidth:"80%"}}>
+                    {m.text}
+                  </div>
+                  <div style={{fontSize:10,color:T.sub,marginTop:2}}>{new Date(m.created_at).toLocaleTimeString("en",{hour:"2-digit",minute:"2-digit"})}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:10}}>
+              <input style={{...css.input,flex:1}} placeholder="Message..." value={dmInput} onChange={e=>setDmInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendDM()}/>
+              <button style={css.btn} onClick={sendDM}>→</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {newAchievement&&(
         <div style={{position:"fixed",top:20,right:20,zIndex:1000,background:T.card,border:`1.5px solid ${T.accent}`,borderRadius:14,padding:"14px 20px",boxShadow:`0 0 30px ${T.accent}40`,animation:"slideIn 0.4s ease",maxWidth:280}}>
           <div style={{fontSize:11,color:T.accent,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>🎖 Achievement Unlocked!</div>
@@ -859,7 +1007,19 @@ export default function StudyGrove() {
                       </div>
                     );
                   })}
-                  <button style={{...css.btnD,width:"100%",marginTop:14,fontSize:12}} onClick={leaveGroup}>Leave Group</button>
+                  <div style={{marginTop:14,borderTop:`1px solid ${T.border}`,paddingTop:12}}>
+                    <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>🔕 Mute Group Chat</div>
+                    {isGroupMuted(group?.id)?(
+                      <button style={{...css.btnO,width:"100%",fontSize:12,marginBottom:8}} onClick={()=>unmuteGroup(group?.id)}>🔔 Unmute Group</button>
+                    ):(
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+                        {[["1","1 hour"],["8","8 hours"],["24","24 hours"],["forever","Forever"]].map(([val,label])=>(
+                          <button key={val} onClick={()=>muteGroup(group?.id,val)} style={{...css.btnO,fontSize:11,padding:"4px 10px"}}>{label}</button>
+                        ))}
+                      </div>
+                    )}
+                    <button style={{...css.btnD,width:"100%",fontSize:12}} onClick={leaveGroup}>Leave Group</button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1067,7 +1227,22 @@ export default function StudyGrove() {
                         <span style={{fontSize:11,color:T.sub}}>🔥 {f.stats?.streak||0} streak</span>
                       </div>
                     </div>
-                    <button onClick={()=>removeFriend(f.id)} style={{background:"transparent",border:"none",color:T.sub,cursor:"pointer",fontSize:18}} title="Remove friend">×</button>
+                    <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}}>
+                      <button onClick={()=>openDM(f)} style={{...css.btn,padding:"5px 12px",fontSize:12,position:"relative"}}>
+                        💬 DM {unreadDMs[f.id]>0&&<span style={{position:"absolute",top:-4,right:-4,background:"#cc2222",color:"#fff",borderRadius:"50%",fontSize:10,width:16,height:16,display:"flex",alignItems:"center",justifyContent:"center"}}>{unreadDMs[f.id]}</span>}
+                      </button>
+                      <div style={{display:"flex",gap:4}}>
+                        {editingNickname===f.id?(
+                          <div style={{display:"flex",gap:4}}>
+                            <input style={{...css.input,padding:"3px 8px",fontSize:11,width:100}} placeholder="Nickname" value={nicknameInput} onChange={e=>setNicknameInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveNickname(f.id,nicknameInput);if(e.key==="Escape")setEditingNickname(null);}} autoFocus/>
+                            <button style={{...css.btn,padding:"3px 8px",fontSize:11}} onClick={()=>saveNickname(f.id,nicknameInput)}>✓</button>
+                          </div>
+                        ):(
+                          <button onClick={()=>{setEditingNickname(f.id);setNicknameInput(nicknames[f.id]||"");}} style={{...css.btnO,padding:"3px 8px",fontSize:11}}>{nicknames[f.id]?"✏️ Nick":"🏷️ Nick"}</button>
+                        )}
+                        <button onClick={()=>removeFriend(f.id)} style={{...css.btnO,padding:"3px 8px",fontSize:11,borderColor:"#cc2222",color:"#cc2222"}}>×</button>
+                      </div>
+                    </div>
                   </div>
                 );
               })}
@@ -1133,6 +1308,19 @@ export default function StudyGrove() {
               </div>
             </div>
 
+
+            <div style={css.card}>
+              <div style={{fontWeight:700,marginBottom:12}}>🔔 Notifications</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0"}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:600}}>In-app notifications</div>
+                  <div style={{fontSize:12,color:T.sub}}>Show toast when group or DM message arrives</div>
+                </div>
+                <button onClick={()=>{setNotificationsEnabled(v=>!v);localStorage.setItem("sg_notifs",String(!notificationsEnabled));}} style={{...css.btn,padding:"6px 14px",fontSize:12,background:notificationsEnabled?T.accent:"#555",color:notificationsEnabled?"#000":"#fff"}}>
+                  {notificationsEnabled?"🔔 ON":"🔕 OFF"}
+                </button>
+              </div>
+            </div>
 
             <div style={css.card}>
               <div style={{fontWeight:700,marginBottom:4}}>📖 About</div>
