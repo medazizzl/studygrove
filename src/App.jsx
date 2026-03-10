@@ -502,26 +502,28 @@ export default function StudyGrove() {
     return Math.max(0, 3 - (stats.revives_used||0));
   };
 
-  // Reset daily stats at midnight
+  // Reset daily/weekly stats at midnight
   useEffect(() => {
-    const checkReset = () => {
+    if (!authUser) return;
+    const checkReset = async () => {
       const now = new Date();
-      const lastReset = localStorage.getItem("sg_last_reset");
       const today = now.toDateString();
-      if (lastReset !== today) {
-        localStorage.setItem("sg_last_reset", today);
-        const dayOfWeek = now.getDay();
-        if (dayOfWeek === 1) { // Monday - reset weekly too
-          setStats(prev => ({ ...prev, today_minutes: 0, weekly_minutes: 0 }));
-        } else {
-          setStats(prev => ({ ...prev, today_minutes: 0 }));
-        }
-      }
+      const lastReset = localStorage.getItem(`sg_last_reset_${authUser.id}`);
+      if (lastReset === today) return;
+      localStorage.setItem(`sg_last_reset_${authUser.id}`, today);
+      const dayOfWeek = now.getDay();
+      const isMonday = dayOfWeek === 1;
+      setStats(prev => {
+        const updated = { ...prev, today_minutes: 0, ...(isMonday ? { weekly_minutes: 0 } : {}) };
+        // Save reset to DB
+        supabase.from("profiles").update({ stats: updated, updated_at: new Date().toISOString() }).eq("id", authUser.id).then(()=>{});
+        return updated;
+      });
     };
     checkReset();
-    const interval = setInterval(checkReset, 60000);
+    const interval = setInterval(checkReset, 60000); // check every minute
     return () => clearInterval(interval);
-  }, []);
+  }, [authUser]);
 
   // Friend online notifications
   useEffect(() => {
