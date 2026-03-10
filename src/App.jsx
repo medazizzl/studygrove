@@ -43,6 +43,16 @@ const ACHIEVEMENTS = [
   { id:"architect",        icon:"🏗️", name:"The Architect",        desc:"Discover the hidden easter egg",      secret:true  },
 ];
 
+const SOUNDS = {
+  rain:      "https://www.soundjay.com/nature/sounds/rain-01.mp3",
+  fireplace: "https://www.soundjay.com/nature/sounds/fire-burning-1.mp3",
+  lofi:      "https://cdn.pixabay.com/audio/2022/10/16/audio_12a4d1d4a3.mp3",
+  ocean:     "https://www.soundjay.com/nature/sounds/ocean-wave-1.mp3",
+  cafe:      "https://cdn.pixabay.com/audio/2022/03/09/audio_c42571c7f9.mp3",
+};
+
+const SOUND_LABELS = { rain:"🌧 Rain", fireplace:"🔥 Fireplace", lofi:"🎵 Lo-fi", ocean:"🌊 Ocean", cafe:"☕ Café" };
+
 const fmtTime = (s) => {
   const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
   if (h>0) return `${h}h ${String(m).padStart(2,"0")}m`;
@@ -85,6 +95,9 @@ export default function StudyGrove() {
   const [showThemePanel, setShowThemePanel] = useState(false);
   const [newAchievement, setNewAchievement] = useState(null);
   const [easterClicks, setEasterClicks] = useState(0);
+  const [activeSound, setActiveSound] = useState(null);
+  const [soundVolume, setSoundVolume] = useState(0.5);
+  const [friendNotif, setFriendNotif] = useState(null);
 
   const [stats, setStats] = useState({total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0,night_sessions:0,early_sessions:0,groups_joined:0,focus_uses:0,themes_used:1,challenge_wins:0});
   const [tasks, setTasks] = useState([]);
@@ -113,6 +126,7 @@ export default function StudyGrove() {
   const pomRef = useRef(null);
   const chatBottomRef = useRef(null);
   const channelRef = useRef(null);
+  const audioRef = useRef(null);
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data:{session}})=>{
@@ -226,7 +240,7 @@ export default function StudyGrove() {
       setStudying(false);
       const mins=Math.floor(sessionSecs/60);
       if(mins>0){
-        const ns={...stats,
+        let nsBase={...stats,
           total_minutes:(stats.total_minutes||0)+mins,
           today_minutes:(stats.today_minutes||0)+mins,
           weekly_minutes:(stats.weekly_minutes||0)+mins,
@@ -234,6 +248,7 @@ export default function StudyGrove() {
           subject_minutes:{...(stats.subject_minutes||{}),[selectedSubject]:((stats.subject_minutes||{})[selectedSubject]||0)+mins},
           invisible_minutes:invisible?(stats.invisible_minutes||0)+mins:(stats.invisible_minutes||0),
         };
+        const ns = await updateStreak(nsBase);
         let ach=ns.achievements||[];
         if(ns.total_sessions>=1)ach=unlockAchievement("first_step",ach);
         if(ns.total_minutes>=600)ach=unlockAchievement("apprentice",ach);
@@ -420,6 +435,67 @@ export default function StudyGrove() {
     }
   };
 
+  // Sound control
+  const playSound = (soundId) => {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+    if (activeSound === soundId) { setActiveSound(null); return; }
+    const audio = new Audio(SOUNDS[soundId]);
+    audio.loop = true;
+    audio.volume = soundVolume;
+    audio.play().catch(()=>{});
+    audioRef.current = audio;
+    setActiveSound(soundId);
+  };
+
+  const changeVolume = (vol) => {
+    setSoundVolume(vol);
+    if (audioRef.current) audioRef.current.volume = vol;
+  };
+
+  // Streak calculation
+  const updateStreak = async (currentStats) => {
+    const today = new Date().toDateString();
+    const lastStudy = currentStats.last_study_date;
+    const yesterday = new Date(Date.now() - 86400000).toDateString();
+    let streak = currentStats.streak || 0;
+    if (lastStudy === today) return currentStats;
+    if (lastStudy === yesterday) streak += 1;
+    else if (lastStudy !== today) streak = 1;
+    return { ...currentStats, streak, last_study_date: today };
+  };
+
+  // Reset daily stats at midnight
+  useEffect(() => {
+    const checkReset = () => {
+      const now = new Date();
+      const lastReset = localStorage.getItem("sg_last_reset");
+      const today = now.toDateString();
+      if (lastReset !== today) {
+        localStorage.setItem("sg_last_reset", today);
+        const dayOfWeek = now.getDay();
+        if (dayOfWeek === 1) { // Monday - reset weekly too
+          setStats(prev => ({ ...prev, today_minutes: 0, weekly_minutes: 0 }));
+        } else {
+          setStats(prev => ({ ...prev, today_minutes: 0 }));
+        }
+      }
+    };
+    checkReset();
+    const interval = setInterval(checkReset, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Friend online notifications
+  useEffect(() => {
+    if (!onlineMembers.length || !friends.length) return;
+    const onlineFriendIds = onlineMembers.map(m => m.user_id);
+    const onlineFriend = friends.find(f => onlineFriendIds.includes(f.id) && onlineMembers.find(m => m.user_id === f.id)?.status === "studying");
+    if (onlineFriend) {
+      setFriendNotif(onlineFriend);
+      setTimeout(() => setFriendNotif(null), 5000);
+    }
+  }, [onlineMembers]);
+
   const pomPct=((25*60-pomodoroSecs)/(25*60))*100;
 
   const css={
@@ -527,6 +603,13 @@ export default function StudyGrove() {
           <div style={{fontSize:11,color:T.accent,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>🎖 Achievement Unlocked!</div>
           <div style={{fontSize:18,marginTop:4}}>{newAchievement.icon} <strong>{newAchievement.name}</strong></div>
           <div style={{fontSize:12,color:T.sub,marginTop:2}}>{newAchievement.desc}</div>
+        </div>
+      )}
+
+      {friendNotif&&(
+        <div style={{position:"fixed",top:newAchievement?80:20,right:20,zIndex:999,background:T.card,border:`1.5px solid #22c55e`,borderRadius:14,padding:"12px 18px",boxShadow:`0 0 20px #22c55e30`,animation:"slideIn 0.4s ease",maxWidth:260}}>
+          <div style={{fontSize:11,color:"#22c55e",fontWeight:700}}>🟢 Friend Online</div>
+          <div style={{fontSize:14,marginTop:4,fontWeight:600}}>{friendNotif.username} started studying!</div>
         </div>
       )}
 
