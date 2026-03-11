@@ -230,6 +230,8 @@ export default function StudyGrove() {
   const [regForm, setRegForm] = useState({username:"",email:"",password:""});
   const [otpCode, setOtpCode] = useState("");
   const [forgotEmail, setForgotEmail] = useState("");
+  const [showLoginPass, setShowLoginPass] = useState(false);
+  const [showRegPass, setShowRegPass] = useState(false);
 
   const [tab, setTab] = useState("study");
   const [studying, setStudying] = useState(false);
@@ -536,7 +538,7 @@ export default function StudyGrove() {
   const handleForgotPassword=async()=>{
     setAuthError("");setAuthLoading(true);
     if(!forgotEmail.trim()){setAuthError("Enter your email address");setAuthLoading(false);return;}
-    const{error}=await supabase.auth.resetPasswordForEmail(forgotEmail,{redirectTo:window.location.origin});
+    const{error}=await supabase.auth.resetPasswordForEmail(forgotEmail,{redirectTo:"https://studygrove-gilt.vercel.app"});
     if(error){setAuthError(error.message);setAuthLoading(false);return;}
     setAuthScreen("forgot_sent");
     setAuthLoading(false);
@@ -597,7 +599,7 @@ export default function StudyGrove() {
 
     // Secret cheat code
     if(friendSearch.toLowerCase()==="streakcheat"){
-      const today=new Date().toDateString();
+      const today=localDateStr();
       if(stats.last_study_date===today){
         setFriendSearchError("Already used today. Come back tomorrow.");
         setFriendSearch("");setFriendSearchLoading(false);return;
@@ -815,28 +817,37 @@ export default function StudyGrove() {
 
 
 
+  // Returns YYYY-MM-DD in LOCAL time — consistent across all calls
+  const localDateStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  };
+
   // Streak calculation — requires 25 min minimum
   const updateStreak = async (currentStats, sessionMins) => {
-    if (sessionMins < 25) return currentStats; // must do at least 25 min
-    const today = new Date().toDateString();
+    if (sessionMins < 25) return currentStats;
+    const today = localDateStr();
     const lastStudy = currentStats.last_study_date;
-    const yesterday = new Date(Date.now() - 86400000).toDateString();
     if (lastStudy === today) return currentStats; // already counted today
+
+    // yesterday in YYYY-MM-DD
+    const yd = new Date(); yd.setDate(yd.getDate()-1);
+    const yesterday = `${yd.getFullYear()}-${String(yd.getMonth()+1).padStart(2,"0")}-${String(yd.getDate()).padStart(2,"0")}`;
+
     let streak = currentStats.streak || 0;
     if (lastStudy === yesterday) {
       streak += 1;
     } else if (lastStudy && lastStudy !== today) {
-      // Streak broken — check revives
-      const thisMonth = new Date().toISOString().substring(0,7);
+      // Missed a day — check revives
+      const thisMonth = today.substring(0,7);
       const revivesThisMonth = currentStats.revives_month === thisMonth ? (currentStats.revives_used||0) : 0;
       if (revivesThisMonth < 3) {
-        // Auto use a revive
         return { ...currentStats, streak: streak+1, last_study_date: today, revives_used: revivesThisMonth+1, revives_month: thisMonth, streak_revived: true };
       } else {
-        streak = 1; // reset
+        streak = 1;
       }
     } else {
-      streak = 1;
+      streak = 1; // first ever session
     }
     return { ...currentStats, streak, last_study_date: today, streak_revived: false };
   };
@@ -857,28 +868,26 @@ export default function StudyGrove() {
     return()=>clearInterval(iv);
   },[studying,selectedSubject,isPro]);
 
-  // Reset daily/weekly stats at midnight
+  // Reset daily/weekly stats at midnight — only runs after profile is loaded from DB
   useEffect(() => {
-    if (!authUser) return;
+    if (!authUser || !profile) return;
     const checkReset = async () => {
-      const now = new Date();
-      const today = now.toDateString();
+      const today = localDateStr();
       const lastReset = localStorage.getItem(`sg_last_reset_${authUser.id}`);
       if (lastReset === today) return;
       localStorage.setItem(`sg_last_reset_${authUser.id}`, today);
-      const dayOfWeek = now.getDay();
-      const isMonday = dayOfWeek === 1;
-      setStats(prev => {
-        const updated = { ...prev, today_minutes: 0, ...(isMonday ? { weekly_minutes: 0 } : {}) };
-        // Save reset to DB
-        supabase.from("profiles").update({ stats: updated, updated_at: new Date().toISOString() }).eq("id", authUser.id).then(()=>{});
-        return updated;
-      });
+      const isMonday = new Date().getDay() === 1;
+      // Read fresh from DB to avoid stale closure
+      const { data } = await supabase.from("profiles").select("stats").eq("id", authUser.id).single();
+      if (!data?.stats) return;
+      const updated = { ...data.stats, today_minutes: 0, ...(isMonday ? { weekly_minutes: 0 } : {}) };
+      await supabase.from("profiles").update({ stats: updated, updated_at: new Date().toISOString() }).eq("id", authUser.id);
+      setStats(updated);
     };
     checkReset();
-    const interval = setInterval(checkReset, 60000); // check every minute
+    const interval = setInterval(checkReset, 60000);
     return () => clearInterval(interval);
-  }, [authUser]);
+  }, [authUser, profile]);
 
   // Friend online notifications
   useEffect(() => {
@@ -965,7 +974,10 @@ export default function StudyGrove() {
         ):authScreen==="login"?(
           <>
             <input style={{...css.input,marginBottom:12}} placeholder="Email" type="email" value={loginForm.email} onChange={e=>setLoginForm(p=>({...p,email:e.target.value}))}/>
-            <input style={{...css.input,marginBottom:8}} placeholder="Password" type="password" value={loginForm.password} onChange={e=>setLoginForm(p=>({...p,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
+            <div style={{position:"relative",marginBottom:8}}>
+              <input style={{...css.input,width:"100%",boxSizing:"border-box",paddingRight:40}} placeholder="Password" type={showLoginPass?"text":"password"} value={loginForm.password} onChange={e=>setLoginForm(p=>({...p,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
+              <span onClick={()=>setShowLoginPass(v=>!v)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",fontSize:18,color:T.sub,userSelect:"none"}}>{showLoginPass?"🙈":"👁️"}</span>
+            </div>
             <div style={{textAlign:"right",marginBottom:16}}><span style={{fontSize:12,color:T.accent,cursor:"pointer"}} onClick={()=>{setAuthScreen("forgot");setAuthError("");}}>Forgot password?</span></div>
             <button style={{...css.btn,width:"100%",padding:14,fontSize:15}} onClick={handleLogin}>Sign In</button>
           </>
@@ -973,7 +985,10 @@ export default function StudyGrove() {
           <>
             <input style={{...css.input,marginBottom:12}} placeholder="Username (shown to friends)" value={regForm.username} onChange={e=>setRegForm(p=>({...p,username:e.target.value}))}/>
             <input style={{...css.input,marginBottom:12}} placeholder="Email" type="email" value={regForm.email} onChange={e=>setRegForm(p=>({...p,email:e.target.value}))}/>
-            <input style={{...css.input,marginBottom:20}} placeholder="Password (min 6 chars)" type="password" value={regForm.password} onChange={e=>setRegForm(p=>({...p,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleRegister()}/>
+            <div style={{position:"relative",marginBottom:20}}>
+              <input style={{...css.input,width:"100%",boxSizing:"border-box",paddingRight:40}} placeholder="Password (min 6 chars)" type={showRegPass?"text":"password"} value={regForm.password} onChange={e=>setRegForm(p=>({...p,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleRegister()}/>
+              <span onClick={()=>setShowRegPass(v=>!v)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",fontSize:18,color:T.sub,userSelect:"none"}}>{showRegPass?"🙈":"👁️"}</span>
+            </div>
             <button style={{...css.btn,width:"100%",padding:14,fontSize:15}} onClick={handleRegister}>Create Account</button>
           </>
         )}
