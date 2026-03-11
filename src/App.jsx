@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://cifpwjdhfiyidvympecs.supabase.co";
@@ -50,6 +50,7 @@ const ACHIEVEMENTS = [
 
 
 
+
 const getStreakFlame = (streak) => {
   if (streak >= 365) return { icon:"💙", label:"Legendary", color:"#4fc3f7" };
   if (streak >= 180) return { icon:"💜", label:"Elite",     color:"#ce93d8" };
@@ -58,18 +59,162 @@ const getStreakFlame = (streak) => {
   if (streak >= 7)   return { icon:"🔥", label:"Warming Up",color:"#ffd600" };
   return { icon:"🔥", label:"Starter", color:"#888888" };
 };
-
 const fmtTime = (s) => {
-  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
-  if (h>0) return `${h}h ${String(m).padStart(2,"0")}m`;
+  const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
+  if(h>0)return `${h}h ${String(m).padStart(2,"0")}m`;
   return `${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
 };
 const fmtMins = (m) => {
-  if (!m||m<=0) return "0m";
-  if (m<60) return `${Math.round(m)}m`;
+  if(!m||m<=0)return "0m";
+  if(m<60)return `${Math.round(m)}m`;
   return `${Math.floor(m/60)}h${m%60>0?" "+Math.round(m%60)+"m":""}`;
 };
 const genCode = () => Math.random().toString(36).substring(2,8).toUpperCase();
+
+// ── FRAMES ────────────────────────────────────────────────────────────────────
+const FRAMES = {
+  // Free
+  sprout:    { id:"sprout",    name:"Sprout",    premium:false, colors:["#1b5e20","#4caf50","#a5d6a7","#4caf50","#1b5e20"], anim:"none",      particles:null },
+  flame:     { id:"flame",     name:"Flame",     premium:false, colors:["#bf360c","#ff6d00","#ffcc02","#ff6d00","#bf360c"], anim:"pulse",     particles:null },
+  champion:  { id:"champion",  name:"Champion",  premium:false, colors:["#7f5f00","#ffd600","#fffde7","#ffd600","#7f5f00"], anim:"shimmer",   particles:"stars" },
+  nightowl:  { id:"nightowl",  name:"Night Owl", premium:false, colors:["#311b92","#7c4dff","#d1c4e9","#7c4dff","#311b92"], anim:"none",      particles:null },
+  diamond:   { id:"diamond",   name:"Diamond",   premium:false, colors:["#004d60","#00e5ff","#ffffff","#00e5ff","#004d60"], anim:"sparkle",   particles:"sparks" },
+  scholar:   { id:"scholar",   name:"Scholar",   premium:false, colors:["#0a2a6e","#1565c0","#90caf9","#1565c0","#0a2a6e"], anim:"breathe",  particles:"books" },
+  warrior:   { id:"warrior",   name:"Warrior",   premium:false, colors:["#7f0000","#d50000","#ff6d6d","#d50000","#7f0000"], anim:"heartbeat", particles:"sparks" },
+  // Pro
+  aurora:    { id:"aurora",    name:"Aurora",    premium:true,  colors:["#00bcd4","#7c4dff","#f48fb1","#00e5ff","#00bcd4"], anim:"rotate",    particles:null },
+  inferno:   { id:"inferno",   name:"Inferno",   premium:true,  colors:["#7f0000","#ff1744","#ff6d00","#ff1744","#7f0000"], anim:"fastpulse", particles:null },
+  lightning: { id:"lightning", name:"Lightning", premium:true,  colors:["#e65100","#ffea00","#ffffff","#ffea00","#e65100"], anim:"flash",     particles:"lightning" },
+  ocean:     { id:"ocean",     name:"Ocean",     premium:true,  colors:["#01579b","#0091ea","#b3e5fc","#0091ea","#01579b"], anim:"wave",      particles:"bubbles" },
+  sakura:    { id:"sakura",    name:"Sakura",    premium:true,  colors:["#880e4f","#f06292","#fce4ec","#f06292","#880e4f"], anim:"pulse",     particles:"petals" },
+  glitch:    { id:"glitch",    name:"Glitch",    premium:true,  colors:["#1b5e20","#76ff03","#ccff90","#76ff03","#1b5e20"], anim:"glitch",    particles:"glitch" },
+};
+
+const frameGrad = (f) =>
+  `linear-gradient(135deg,${f.colors.join(",")})`;
+
+const PARTICLE_SETS = {
+  stars:     [{c:"★",col:"#ffd700"},{c:"✦",col:"#fffacd"},{c:"★",col:"#ffeb3b"},{c:"✦",col:"#fff176"},{c:"★",col:"#ffd700"},{c:"✦",col:"#ffe57f"}],
+  sparks:    [{c:"✦",col:"#ffffff"},{c:"·",col:"#e0f7fa"},{c:"✦",col:"#b2ebf2"},{c:"·",col:"#ffffff"},{c:"✦",col:"#e0f7fa"},{c:"·",col:"#fff"}],
+  books:     [{c:"📖",col:"#42a5f5"},{c:"✏️",col:"#90caf9"},{c:"📚",col:"#64b5f6"},{c:"⭐",col:"#fff"},{c:"📖",col:"#42a5f5"}],
+  lightning: [{c:"⚡",col:"#ffea00"},{c:"✦",col:"#fff"},{c:"⚡",col:"#fff176"},{c:"✦",col:"#ffea00"},{c:"⚡",col:"#ffffff"},{c:"⚡",col:"#ffe57f"},{c:"✦",col:"#ffff00"},{c:"⚡",col:"#fff"}],
+  bubbles:   [{c:"○",col:"#80d8ff"},{c:"◌",col:"#b3e5fc"},{c:"○",col:"#ffffff"},{c:"◌",col:"#80d8ff"},{c:"○",col:"#e1f5fe"},{c:"◌",col:"#fff"}],
+  petals:    [{c:"🌸",col:"#f48fb1"},{c:"✿",col:"#fce4ec"},{c:"🌸",col:"#f06292"},{c:"✿",col:"#ff80ab"},{c:"🌸",col:"#fce4ec"},{c:"🌺",col:"#f48fb1"},{c:"✾",col:"#ffb3c6"},{c:"🌸",col:"#ff80ab"}],
+  glitch:    [{c:"▪",col:"#76ff03"},{c:"▫",col:"#00ff00"},{c:"▪",col:"#ccff90"},{c:"░",col:"#76ff03"},{c:"▪",col:"#fff"},{c:"▓",col:"#76ff03"},{c:"░",col:"#00e676"},{c:"▪",col:"#b2ff59"},{c:"▓",col:"#fff"}],
+};
+
+const FrameParticles = ({ size, ptype }) => {
+  const set = PARTICLE_SETS[ptype] || [];
+  const count = set.length;
+  return (
+    <>
+      {set.map((p, i) => {
+        const dur = 3.5 + i * 0.35;
+        return (
+          <div key={i} style={{
+            position:"absolute", inset:0,
+            borderRadius:"50%",
+            pointerEvents:"none",
+            animation:`fpSpin ${dur}s infinite linear`,
+            animationDelay:`-${(dur/count)*i}s`,
+            zIndex:10,
+          }}>
+            <div style={{
+              position:"absolute",
+              top:"50%", left:"50%",
+              transform:`rotate(${(360/count)*i}deg) translateY(-${size*0.47}px)`,
+              fontSize: size * 0.19,
+              lineHeight:1,
+              color: p.col,
+              filter:"drop-shadow(0 0 3px currentColor)",
+              marginTop: -(size*0.1),
+              marginLeft: -(size*0.1),
+            }}>{p.c}</div>
+          </div>
+        );
+      })}
+    </>
+  );
+};
+
+const FramedAvatar = ({ size=40, avatarUrl, username, frameId, unlockedFrames, isPro, accentColor }) => {
+  const frame  = frameId && frameId !== "none" ? FRAMES[frameId] : null;
+  const owned  = frame && (unlockedFrames.includes(frameId) || (frame.premium && isPro));
+  const ring   = Math.max(4, size * 0.13); // ring thickness
+  const gap    = Math.max(2, size * 0.04); // dark gap between ring and avatar
+  const inner  = size - (ring + gap) * 2;
+
+  const animName = owned && frame ? {
+    pulse:     "faPulse",
+    shimmer:   "faShimmer",
+    sparkle:   "faSparkle",
+    breathe:   "faBreathe",
+    heartbeat: "faHeartbeat",
+    rotate:    "faRotate",
+    fastpulse: "faFastPulse",
+    flash:     "faFlash",
+    wave:      "faWave",
+    glitch:    "faGlitch",
+  }[frame.anim] || "" : "";
+
+  return (
+    <div style={{ position:"relative", width:size, height:size, flexShrink:0 }}>
+      {/* Ring */}
+      {owned && (
+        <div style={{
+          position:"absolute", inset:0, borderRadius:"50%",
+          background: frameGrad(frame),
+          animation: animName ? (()=>{const dur=frame.anim==="glitch"?"0.15s":frame.anim==="fastpulse"?"0.6s":frame.anim==="flash"?"0.4s":frame.anim==="heartbeat"?"0.9s":frame.anim==="shimmer"?"2.5s":frame.anim==="sparkle"?"1.8s":"2s";const timing=frame.anim==="spin"||frame.anim==="rotate"?"linear":"ease-in-out";return `${animName} ${dur} infinite ${timing}`;})() : "none",
+        }}/>
+      )}
+      {/* Dark gap */}
+      {owned && (
+        <div style={{
+          position:"absolute",
+          inset: ring,
+          borderRadius:"50%",
+          background:"rgba(0,0,0,0.55)",
+        }}/>
+      )}
+      {/* Avatar */}
+      <div style={{
+        position:"absolute",
+        inset: owned ? ring + gap : 0,
+        borderRadius:"50%",
+        background: accentColor || "#00e676",
+        overflow:"hidden",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        fontWeight:900, fontSize: inner * 0.42, color:"#000",
+      }}>
+        {avatarUrl
+          ? <img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}} alt="pfp"/>
+          : <span>{(username||"?")[0].toUpperCase()}</span>
+        }
+      </div>
+      {owned && frame?.particles && size >= 56 && (
+        <FrameParticles size={size} ptype={frame.particles}/>
+      )}
+    </div>
+  );
+};
+
+// Inject frame keyframes once
+if (typeof document !== "undefined" && !document.getElementById("sg-frame-kf")) {
+  const s = document.createElement("style");
+  s.id = "sg-frame-kf";
+  s.textContent = `
+    @keyframes faPulse     { 0%,100%{filter:brightness(1) opacity(0.95)} 50%{filter:brightness(1.6) opacity(1)} }
+    @keyframes faShimmer   { 0%{filter:brightness(0.9) contrast(1.1)} 50%{filter:brightness(1.8) contrast(1.4) hue-rotate(15deg)} 100%{filter:brightness(0.9) contrast(1.1)} }
+    @keyframes faRotate    { 0%{filter:hue-rotate(0deg) brightness(1.1)} 100%{filter:hue-rotate(360deg) brightness(1.1)} }
+    @keyframes faFastPulse { 0%,100%{filter:brightness(1)}   50%{filter:brightness(2.2) saturate(1.5)} }
+    @keyframes faFlash     { 0%{filter:brightness(1)  saturate(1)}   40%{filter:brightness(4) saturate(3)} 100%{filter:brightness(1) saturate(1)} }
+    @keyframes faWave      { 0%,100%{filter:brightness(1)   hue-rotate(0deg)} 50%{filter:brightness(1.4) hue-rotate(25deg)} }
+    @keyframes faGlitch    { 0%{filter:hue-rotate(0deg)   saturate(4) brightness(1.2)} 33%{filter:hue-rotate(90deg)  saturate(6) brightness(1.8)} 66%{filter:hue-rotate(180deg) saturate(4) brightness(1.2)} 100%{filter:hue-rotate(270deg) saturate(6) brightness(1.8)} }
+    @keyframes fpSpin      { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  `;
+  document.head.appendChild(s);
+}
+// ──────────────────────────────────────────────────────────────────────────────
 
 export default function StudyGrove() {
   const [theme, setTheme] = useState(()=>localStorage.getItem("sg_theme")||"amoled");
@@ -104,6 +249,11 @@ export default function StudyGrove() {
   const [friendNotif, setFriendNotif] = useState(null);
 
   const [stats, setStats] = useState({total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0,night_sessions:0,early_sessions:0,groups_joined:0,focus_uses:0,themes_used:1,challenge_wins:0});
+  const [isPro] = useState(false); // set to true when payment confirmed
+  const [selectedFrame, setSelectedFrame] = useState(()=>localStorage.getItem("sg_frame")||"none");
+  const [profileTitle, setProfileTitle] = useState(()=>localStorage.getItem("sg_title")||"");
+  const [currentQuote, setCurrentQuote] = useState("");
+  const [showProModal, setShowProModal] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
   const [newTaskSubject, setNewTaskSubject] = useState("Math");
@@ -113,6 +263,11 @@ export default function StudyGrove() {
   const [friendSearchResult, setFriendSearchResult] = useState(null);
   const [friendSearchError, setFriendSearchError] = useState("");
   const [friendSearchLoading, setFriendSearchLoading] = useState(false);
+  const [unlockedFrames, setUnlockedFrames] = useState(()=>{ try{return JSON.parse(localStorage.getItem("sg_unlocked_frames")||"[]");}catch{return [];} });
+  const [quoteTimer, setQuoteTimer] = useState(null);
+  const [devCheatUsed, setDevCheatUsed] = useState(()=>localStorage.getItem("sg_dev_cheat")==="true");
+  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [uploadingPfp, setUploadingPfp] = useState(false);
   const [nicknames, setNicknames] = useState(() => { try { return JSON.parse(localStorage.getItem("sg_nicknames")||"{}"); } catch { return {}; } });
   const [editingNickname, setEditingNickname] = useState(null);
   const [nicknameInput, setNicknameInput] = useState("");
@@ -162,12 +317,57 @@ export default function StudyGrove() {
 
   const loadProfile=async()=>{
     const{data}=await supabase.from("profiles").select("*").eq("id",authUser.id).single();
-    if(data){setProfile(data);if(data.stats)setStats(data.stats);if(data.subjects)setSubjects(data.subjects);}
+    if(data){
+      setProfile(data);
+      if(data.stats)setStats(data.stats);
+      if(data.subjects)setSubjects(data.subjects);
+      if(data.stats)checkFrameUnlocks(data.stats);
+      if(data.avatar_url)setAvatarUrl(data.avatar_url);
+    }
+  };
+
+  const uploadPfp=async(file)=>{
+    if(!file||!authUser)return;
+    setUploadingPfp(true);
+    try{
+      const reader=new FileReader();
+      reader.onload=async(e)=>{
+        const base64=e.target.result;
+        setAvatarUrl(base64);
+        await supabase.from("profiles").update({avatar_url:base64,updated_at:new Date().toISOString()}).eq("id",authUser.id);
+        setUploadingPfp(false);
+      };
+      reader.readAsDataURL(file);
+    }catch(err){setUploadingPfp(false);}
   };
 
   const saveStats=async(newStats)=>{
     setStats(newStats);
     await supabase.from("profiles").update({stats:newStats,updated_at:new Date().toISOString()}).eq("id",authUser.id);
+    // Check frame unlocks based on achievements
+    checkFrameUnlocks(newStats);
+  };
+
+  const checkFrameUnlocks=(ns)=>{
+    const ach=ns.achievements||[];
+    const frames=[...unlockedFrames];
+    let changed=false;
+    if(ach.includes("first_step")&&!frames.includes("sprout")){frames.push("sprout");changed=true;}
+    if((ns.streak||0)>=7&&!frames.includes("flame")){frames.push("flame");changed=true;}
+    if(ach.includes("night_owl")&&!frames.includes("nightowl")){frames.push("nightowl");changed=true;}
+    if(ach.includes("perfectionist")&&!frames.includes("diamond")){frames.push("diamond");changed=true;}
+    if(ach.includes("multi_subject")&&!frames.includes("scholar")){frames.push("scholar");changed=true;}
+    if(ach.includes("academic_weapon")&&!frames.includes("warrior")){frames.push("warrior");changed=true;}
+    if(changed){
+      setUnlockedFrames(frames);
+      localStorage.setItem("sg_unlocked_frames",JSON.stringify(frames));
+    }
+  };
+
+  const rotateQuote=(subject)=>{
+    const pool=[...(QUOTES[subject]||[]),...QUOTES.default];
+    const q=pool[Math.floor(Math.random()*pool.length)];
+    setCurrentQuote(q);
   };
 
   const loadTasks=async()=>{
@@ -235,9 +435,19 @@ export default function StudyGrove() {
   },[studying,invisible,selectedSubject,profile]);
 
   useEffect(()=>{
-    if(studying){timerRef.current=setInterval(()=>setSessionSecs(s=>s+1),1000);}
-    else clearInterval(timerRef.current);
-    return()=>clearInterval(timerRef.current);
+    if(studying){
+      timerRef.current=setInterval(()=>setSessionSecs(s=>s+1),1000);
+      if(isPro){
+        rotateQuote(selectedSubject);
+        const qt=setInterval(()=>rotateQuote(selectedSubject),60000);
+        setQuoteTimer(qt);
+      }
+    }else{
+      clearInterval(timerRef.current);
+      if(quoteTimer){clearInterval(quoteTimer);setQuoteTimer(null);}
+      setCurrentQuote("");
+    }
+    return()=>{clearInterval(timerRef.current);};
   },[studying]);
 
   useEffect(()=>{
@@ -358,6 +568,32 @@ export default function StudyGrove() {
 
   const searchFriend=async()=>{
     setFriendSearchError("");setFriendSearchResult(null);setFriendSearchLoading(true);
+
+    // Dev cheat — unlock all free frames
+    if(friendSearch==="12252006"){
+      if(devCheatUsed){
+        setFriendSearchError("bro you already took everything, what do you want, my kidneys too? 🫀");
+        setFriendSearch("");setFriendSearchLoading(false);return;
+      }
+      const allFreeFrames=Object.values(FRAMES).filter(f=>!f.premium).map(f=>f.id);
+      setUnlockedFrames(allFreeFrames);
+      localStorage.setItem("sg_unlocked_frames",JSON.stringify(allFreeFrames));
+      setDevCheatUsed(true);
+      localStorage.setItem("sg_dev_cheat","true");
+      setFriendSearch("");setFriendSearchLoading(false);
+      setFriendSearchError("🎨 shhh... all free frames unlocked. act normal 🕵️");
+      return;
+    }
+
+    // Dev cheat — unlock ALL frames including pro
+    if(friendSearch==="25122006"){
+      const allFrames=Object.values(FRAMES).map(f=>f.id);
+      setUnlockedFrames(allFrames);
+      localStorage.setItem("sg_unlocked_frames",JSON.stringify(allFrames));
+      setFriendSearch("");setFriendSearchLoading(false);
+      setFriendSearchError("👑 Pro frames unlocked. You didn't see anything. 🤫");
+      return;
+    }
 
     // Secret cheat code
     if(friendSearch.toLowerCase()==="streakcheat"){
@@ -611,6 +847,16 @@ export default function StudyGrove() {
     return Math.max(0, 3 - (stats.revives_used||0));
   };
 
+  // Rotate motivational quote every 3 minutes while studying
+  useEffect(()=>{
+    if(!studying||!isPro)return;
+    const pool=[...(QUOTES[selectedSubject]||[]),...QUOTES.default];
+    const pick=()=>setCurrentQuote(pool[Math.floor(Math.random()*pool.length)]);
+    pick();
+    const iv=setInterval(pick,180000);
+    return()=>clearInterval(iv);
+  },[studying,selectedSubject,isPro]);
+
   // Reset daily/weekly stats at midnight
   useEffect(() => {
     if (!authUser) return;
@@ -817,6 +1063,27 @@ export default function StudyGrove() {
         </div>
       )}
 
+      {/* Pro Modal */}
+      {showProModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{...css.card,width:"100%",maxWidth:420,textAlign:"center",boxShadow:`0 0 60px ${T.accent}30`}}>
+            <div style={{fontSize:48}}>👑</div>
+            <div style={{fontWeight:900,fontSize:24,marginTop:8}}>StudyGrove <span style={{color:T.accent}}>Pro</span></div>
+            <div style={{color:T.sub,fontSize:13,marginTop:4,marginBottom:20}}>Unlock the full experience</div>
+            {[["💬","Subject quotes & jokes while you study"],["🖼️","Animated profile frames"],["🎁","Weekly mystery box rewards"],["🔥","10 streak revivals/month"],["📊","Study heatmap & weekly reports"],["👑","Exclusive Pro badge & profile titles"]].map(([icon,text])=>(
+              <div key={text} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.border}`,textAlign:"left"}}>
+                <span style={{fontSize:20}}>{icon}</span>
+                <span style={{fontSize:13}}>{text}</span>
+              </div>
+            ))}
+            <div style={{marginTop:20,fontWeight:900,fontSize:22,color:T.accent}}>$2.99<span style={{fontSize:14,fontWeight:400,color:T.sub}}>/month</span></div>
+            <div style={{fontSize:12,color:"#f59e0b",marginTop:4,marginBottom:16}}>🚀 Launching soon — join the waitlist!</div>
+            <button style={{...css.btn,width:"100%",padding:14,fontSize:15}} onClick={()=>{window.open("https://studygrove-gilt.vercel.app","_blank");setShowProModal(false);}}>Join Waitlist</button>
+            <button style={{...css.btnO,width:"100%",marginTop:8}} onClick={()=>setShowProModal(false)}>Maybe later</button>
+          </div>
+        </div>
+      )}
+
       {focusMode&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.96)",zIndex:800,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
           <div style={{fontSize:13,color:T.sub,marginBottom:8,textTransform:"uppercase",letterSpacing:2}}>Focus Mode</div>
@@ -879,8 +1146,9 @@ export default function StudyGrove() {
           <button style={{...css.btnO,padding:"4px 10px",fontSize:11}} onClick={()=>setInvisible(v=>!v)}>{invisible?"👻 Invisible":"🟢 Visible"}</button>
           <button style={{...css.btnO,padding:"4px 10px",fontSize:11}} onClick={()=>setShowThemePanel(v=>!v)}>🎨</button>
           <button style={{...css.btnO,padding:"4px 10px",fontSize:11}} onClick={()=>setShowGroupModal(true)}>👥 Groups</button>
-          <div style={{width:32,height:32,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,color:"#000",cursor:"pointer"}} onClick={()=>setTab("settings")}>
-            {(profile?.username||"?")[0].toUpperCase()}
+          <button style={{...css.btn,padding:"4px 10px",fontSize:11,background:"linear-gradient(135deg,#ffd700,#ff6d00)",color:"#000"}} onClick={()=>setShowProModal(true)}>👑 Pro</button>
+          <div style={{cursor:"pointer"}} onClick={()=>setTab("settings")}>
+            <FramedAvatar size={36} avatarUrl={avatarUrl} username={profile?.username} frameId={selectedFrame} unlockedFrames={unlockedFrames} isPro={isPro} accentColor={T.accent}/>
           </div>
         </div>
       </div>
@@ -904,6 +1172,12 @@ export default function StudyGrove() {
                 <span>Total <strong style={{color:T.text}}>{fmtMins(stats.total_minutes||0)}</strong></span>
                 <span>Streak <strong style={{color:getStreakFlame(stats.streak||0).color}}>{stats.streak||0} {getStreakFlame(stats.streak||0).icon}</strong> <span style={{fontSize:10,color:T.sub}}>({getStreakFlame(stats.streak||0).label})</span></span>
               </div>
+              {/* Motivational quote */}
+              {studying&&(
+                <div style={{margin:"12px 0",padding:"10px 16px",background:T.surface,borderRadius:10,border:`1px solid ${T.border}`,fontSize:13,color:T.sub,fontStyle:"italic",textAlign:"center",minHeight:40}}>
+                  {isPro&&currentQuote?`"${currentQuote}"`:<span>💬 Subject-based quotes — <span style={{color:T.accent,cursor:"pointer"}} onClick={()=>setShowProModal(true)}>Pro feature</span></span>}
+                </div>
+              )}
               <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center",margin:"14px 0"}}>
                 {subjects.map(s=>(
                   <button key={s} onClick={()=>!studying&&setSelectedSubject(s)} style={{...css.btnO,padding:"5px 12px",fontSize:12,background:selectedSubject===s?T.accent:"transparent",color:selectedSubject===s?"#000":T.sub,borderColor:selectedSubject===s?T.accent:T.border}}>{s}</button>
@@ -925,6 +1199,11 @@ export default function StudyGrove() {
                 <button onClick={()=>{setFocusMode(true);if(!studying)startStop();}} style={{...css.btnO,fontSize:12,padding:"4px 12px"}}>🎯 Focus Mode</button>
               </div>
               {pomodoroMode&&<div style={{marginTop:10,height:4,background:T.border,borderRadius:2}}><div style={{height:"100%",background:T.accent,borderRadius:2,width:`${pomPct}%`,transition:"width 1s linear"}}/></div>}
+              {studying&&(
+                <div style={{marginTop:14,padding:"10px 16px",background:T.surface,borderRadius:10,border:`1px solid ${isPro?T.border:T.border}`,borderStyle:isPro?"solid":"dashed",fontSize:13,color:T.sub,fontStyle:"italic",textAlign:"center"}}>
+                  {isPro&&currentQuote?`💬 ${currentQuote}`:<span>💬 Subject quotes — <span style={{color:T.accent,cursor:"pointer",fontWeight:700}} onClick={()=>setShowProModal(true)}>Pro feature</span></span>}
+                </div>
+              )}
             </div>
 
             <div style={css.card}>
@@ -1292,7 +1571,12 @@ export default function StudyGrove() {
             <div style={css.card}>
               <div style={{fontWeight:700,marginBottom:12}}>👤 Account</div>
               <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
-                <div style={{width:50,height:50,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,fontSize:20,color:"#000"}}>{(profile?.username||"?")[0].toUpperCase()}</div>
+                {/* Clickable avatar */}
+                <input type="file" accept="image/*" id="pfp-upload" style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadPfp(e.target.files[0]);}}/>
+                <label htmlFor="pfp-upload" style={{cursor:"pointer",position:"relative",flexShrink:0}}>
+                  <FramedAvatar size={68} avatarUrl={avatarUrl} username={profile?.username} frameId={selectedFrame} unlockedFrames={unlockedFrames} isPro={isPro} accentColor={T.accent}/>
+                  <div style={{position:"absolute",bottom:2,right:2,background:T.bg,borderRadius:"50%",width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,border:`1px solid ${T.border}`,zIndex:10}}>📷</div>
+                </label>
                 <div>
                   <div style={{fontWeight:700,fontSize:16}}>{profile?.username}</div>
                   <div style={{fontSize:12,color:T.sub}}>{profile?.email}</div>
@@ -1300,6 +1584,7 @@ export default function StudyGrove() {
                     <span style={{fontSize:12,color:T.accent}}>Your code: <strong style={{letterSpacing:2}}>#{profile?.friend_code||"..."}</strong></span>
                     <button onClick={()=>{navigator.clipboard.writeText(profile?.friend_code||"");alert("Code copied!");}} style={{...css.btn,padding:"3px 10px",fontSize:11,borderRadius:8}}>📋 Copy</button>
                   </div>
+                  {avatarUrl&&<button onClick={async()=>{setAvatarUrl(null);await supabase.from("profiles").update({avatar_url:null}).eq("id",authUser.id);}} style={{...css.btnO,marginTop:6,padding:"3px 10px",fontSize:11,color:"#cc2222",borderColor:"#cc2222"}}>Remove photo</button>}
                 </div>
               </div>
               <button style={css.btnD} onClick={handleLogout}>Sign Out</button>
@@ -1317,6 +1602,12 @@ export default function StudyGrove() {
               </div>
             </div>
             <div style={css.card}>
+              <div style={{fontWeight:700,marginBottom:4}}>👑 StudyGrove Pro</div>
+              <div style={{fontSize:12,color:T.sub,marginBottom:12}}>Unlock animated frames, quotes, mystery box and more</div>
+              <button style={{...css.btn,width:"100%",padding:12}} onClick={()=>setShowProModal(true)}>✨ View Pro Features — $2.99/month</button>
+            </div>
+
+            <div style={css.card}>
               <div style={{fontWeight:700,marginBottom:4}}>🔒 Privacy</div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0"}}>
                 <div><div style={{fontSize:14,fontWeight:600}}>Invisible Mode</div><div style={{fontSize:12,color:T.sub}}>Timer still counts. You appear offline.</div></div>
@@ -1324,6 +1615,21 @@ export default function StudyGrove() {
               </div>
             </div>
 
+
+            {/* Go Pro Banner */}
+            <div style={{...css.card,border:`1.5px solid #ffd600`,background:`linear-gradient(135deg,${T.card},#ffd60010)`,marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+                <div>
+                  <div style={{fontWeight:900,fontSize:18}}>👑 StudyGrove <span style={{color:"#ffd600"}}>Pro</span></div>
+                  <div style={{fontSize:12,color:T.sub,marginTop:4}}>Animated frames · Weekly mystery box · Quotes · Heatmap · 10 streak revivals · <span style={{color:"#4caf50"}}>No ads ever</span></div>
+                  <div style={{fontSize:13,color:"#ffd600",fontWeight:700,marginTop:6}}>$2.99/month</div>
+                </div>
+                <div style={{textAlign:"center"}}>
+                  <button style={{...css.btn,background:"#ffd600",color:"#000",padding:"10px 20px",fontSize:14,borderRadius:12}}>Coming Soon 🚀</button>
+                  <div style={{fontSize:10,color:T.sub,marginTop:4}}>Be the first to know</div>
+                </div>
+              </div>
+            </div>
 
             <div style={css.card}>
               <div style={{fontWeight:700,marginBottom:12}}>🔔 Notifications</div>
@@ -1336,6 +1642,59 @@ export default function StudyGrove() {
                   {notificationsEnabled?"🔔 ON":"🔕 OFF"}
                 </button>
               </div>
+            </div>
+
+            {/* Profile Picture */}
+            <div style={css.card}>
+              <div style={{fontWeight:700,marginBottom:12}}>📸 Profile Picture</div>
+              <div style={{display:"flex",alignItems:"center",gap:16}}>
+                <div style={{width:64,height:64,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:24,color:"#000",overflow:"hidden",border:selectedFrame&&selectedFrame!=="none"?`3px solid ${FRAMES[selectedFrame]?.color||T.accent}`:"none",flexShrink:0}}>
+                  {avatarUrl
+                    ?<img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}} alt="pfp"/>
+                    :<span>{(profile?.username||"?")[0].toUpperCase()}</span>
+                  }
+                </div>
+                <div style={{flex:1}}>
+                  <input type="file" accept="image/*" id="pfp-upload" style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadPfp(e.target.files[0]);e.target.value="";}}/>
+                  <button onClick={()=>document.getElementById("pfp-upload").click()} style={{...css.btn,padding:"8px 16px",fontSize:13,cursor:"pointer"}}>
+                    {uploadingPfp?"⏳ Uploading...":"📷 Upload Photo"}
+                  </button>
+                  {avatarUrl&&<button onClick={async()=>{setAvatarUrl(null);await supabase.from("profiles").update({avatar_url:null}).eq("id",authUser.id);}} style={{...css.btnO,marginLeft:8,padding:"8px 12px",fontSize:12,color:"#cc2222",borderColor:"#cc2222"}}>Remove</button>}
+                  <div style={{fontSize:11,color:T.sub,marginTop:6}}>JPG, PNG, GIF supported</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Profile Frames */}
+            <div style={css.card}>
+              <div style={{fontWeight:700,marginBottom:12}}>🖼️ Profile Frames</div>
+              <div style={{fontSize:12,color:T.sub,marginBottom:12}}>Select your frame — unlock more by completing achievements</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
+                {/* No frame option */}
+                <div onClick={()=>{setSelectedFrame("none");localStorage.setItem("sg_frame","none");}} style={{...css.card,padding:10,textAlign:"center",cursor:"pointer",border:`2px solid ${selectedFrame==="none"||!selectedFrame?T.accent:T.border}`,background:selectedFrame==="none"||!selectedFrame?`${T.accent}15`:T.card}}>
+                  <div style={{fontSize:22}}>⬜</div>
+                  <div style={{fontSize:10,marginTop:4,color:T.sub}}>None</div>
+                </div>
+                {Object.values(FRAMES).map(f=>{
+                  const owned=unlockedFrames.includes(f.id);
+                  const active=selectedFrame===f.id;
+                  const accent=f.colors[1];
+                  return(
+                    <div key={f.id} onClick={()=>{
+                      if(owned){setSelectedFrame(f.id);localStorage.setItem("sg_frame",f.id);}
+                    }} style={{...css.card,padding:8,textAlign:"center",cursor:owned?"pointer":"default",border:`2px solid ${active?accent:owned?accent+"66":T.border}`,background:active?`${accent}20`:T.card,opacity:owned?1:0.38,position:"relative",transition:"all 0.15s"}}>
+                      <div style={{display:"flex",justifyContent:"center",marginBottom:4}}>
+                        <FramedAvatar size={40} avatarUrl={null} username="A" frameId={f.id} unlockedFrames={owned?[f.id]:[]} isPro={true} accentColor={T.accent}/>
+                      </div>
+                      <div style={{fontSize:9,color:active?accent:owned?accent:T.sub,fontWeight:active?700:400}}>{f.name}</div>
+                      {f.premium&&<div style={{position:"absolute",top:2,right:2,fontSize:7,background:"#ffd600",color:"#000",borderRadius:3,padding:"1px 4px",fontWeight:700}}>PRO</div>}
+                      {!owned&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,borderRadius:8}}>🔒</div>}
+                      {active&&<div style={{position:"absolute",top:2,left:2,fontSize:7,background:accent,color:"#000",borderRadius:3,padding:"1px 4px",fontWeight:700}}>ON</div>}
+                    </div>
+                  );
+                })}
+              </div>
+              {unlockedFrames.length===0&&<div style={{fontSize:12,color:T.sub,padding:"8px 0"}}>🔒 Complete achievements to unlock frames! Try finishing your first study session to get the 🌱 Sprout frame.</div>}
             </div>
 
             <div style={css.card}>
