@@ -995,7 +995,7 @@ export default function StudyGrove() {
 
       {/* In-app message notification */}
       {inAppNotif&&(
-        <div onClick={()=>{setTab(inAppNotif.type==="group"?"group":"friends");setInAppNotif(null);}} style={{position:"fixed",top:20,left:"50%",transform:"translateX(-50%)",zIndex:1001,background:T.card,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"12px 20px",boxShadow:`0 0 30px rgba(0,0,0,0.5)`,cursor:"pointer",maxWidth:300,animation:"slideIn 0.3s ease"}}>
+        <div onClick={()=>{setTab("social");setInAppNotif(null);}} style={{position:"fixed",top:20,left:"50%",transform:"translateX(-50%)",zIndex:1001,background:T.card,border:`1.5px solid ${T.border}`,borderRadius:14,padding:"12px 20px",boxShadow:`0 0 30px rgba(0,0,0,0.5)`,cursor:"pointer",maxWidth:300,animation:"slideIn 0.3s ease"}}>
           <div style={{fontSize:11,color:T.sub,marginBottom:4}}>💬 {inAppNotif.type==="group"?"Group message":"Direct message"}</div>
           <div style={{fontWeight:700,fontSize:13,color:T.accent}}>{inAppNotif.username}</div>
           <div style={{fontSize:13,color:T.text,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{inAppNotif.text}</div>
@@ -1154,7 +1154,7 @@ export default function StudyGrove() {
       </div>
 
       <div style={{display:"flex",gap:4,padding:"10px 16px",overflowX:"auto",borderBottom:`1px solid ${T.border}`,background:T.surface,position:"sticky",top:57,zIndex:99}}>
-        {[["study","⏱ Study"],["group","👥 Group"],["friends","👤 Friends"],["leaderboard","🏆 Ranks"],["stats","📊 Stats"],["tasks","✅ Tasks"],["achievements","🎖 Badges"],["settings","⚙️ Settings"]].map(([t,l])=>(
+        {[["study","⏱ Study"],["social","👥 Social"],["leaderboard","🏆 Ranks"],["stats","📊 Stats"],["achievements","🎖 Badges"],["settings","⚙️ Settings"]].map(([t,l])=>(
           <button key={t} style={css.tBtn(tab===t)} onClick={()=>setTab(t)}>{l}</button>
         ))}
       </div>
@@ -1248,21 +1248,44 @@ export default function StudyGrove() {
                 ))}
               </div>
             </div>
+
+            <div style={{...css.card,gridColumn:"1/-1"}}>
+              <div style={{fontWeight:700,marginBottom:12}}>✅ Tasks <span style={{fontWeight:400,fontSize:12,color:T.sub}}>({tasks.filter(t=>!t.done).length} remaining)</span></div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+                <input style={{...css.input,flex:1,minWidth:160}} placeholder="Add a task..." value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()}/>
+                <select style={{...css.input,width:130}} value={newTaskSubject} onChange={e=>setNewTaskSubject(e.target.value)}>
+                  {subjects.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+                <button style={css.btn} onClick={addTask}>Add</button>
+              </div>
+              {tasks.length===0&&<div style={{color:T.sub,fontSize:13}}>No tasks yet — add something to study!</div>}
+              {tasks.map(t=>(
+                <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:`1px solid ${T.border}`}}>
+                  <button onClick={()=>toggleTask(t)} style={{width:22,height:22,borderRadius:6,border:`2px solid ${t.done?T.accent:T.border}`,background:t.done?T.accent:"transparent",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {t.done&&<span style={{color:"#000",fontSize:12,fontWeight:900}}>✓</span>}
+                  </button>
+                  <span style={{flex:1,fontSize:13,textDecoration:t.done?"line-through":"none",color:t.done?T.sub:T.text}}>{t.text}</span>
+                  <span style={{fontSize:11,color:T.accent,padding:"2px 8px",background:`${T.accent}18`,borderRadius:20}}>{t.subject}</span>
+                  <button onClick={()=>deleteTask(t.id)} style={{background:"transparent",border:"none",color:T.sub,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
-        {tab==="group"&&(
+        {tab==="social"&&(
           <div>
+            {/* ── GROUP SECTION ── */}
             {!group?(
-              <div style={{...css.card,textAlign:"center",padding:40}}>
-                <div style={{fontSize:48}}>👥</div>
-                <div style={{fontWeight:700,fontSize:20,marginTop:12}}>You're not in a group yet</div>
-                <div style={{color:T.sub,fontSize:14,marginTop:8,marginBottom:20}}>Create one and share the code with friends, or join with a code</div>
+              <div style={{...css.card,textAlign:"center",padding:32,marginBottom:16}}>
+                <div style={{fontSize:40}}>👥</div>
+                <div style={{fontWeight:700,fontSize:18,marginTop:10}}>No group yet</div>
+                <div style={{color:T.sub,fontSize:13,marginTop:6,marginBottom:16}}>Create one or join with a code to study together</div>
                 <button style={css.btn} onClick={()=>setShowGroupModal(true)}>Join or Create a Group</button>
               </div>
             ):(
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-                <div style={{...css.card,height:520,display:"flex",flexDirection:"column"}}> 
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+                <div style={{...css.card,height:420,display:"flex",flexDirection:"column"}}>
                   <div style={{fontWeight:700,marginBottom:8}}>💬 Group Chat</div>
                   <div style={{fontSize:11,color:"#f59e0b",marginBottom:10,padding:"6px 10px",background:"#f59e0b18",borderRadius:8}}>⚠️ Sending a message pauses your timer</div>
                   <div style={{flex:1,overflowY:"auto",paddingRight:4}}>
@@ -1281,18 +1304,17 @@ export default function StudyGrove() {
                     <button style={css.btn} onClick={sendMessage}>→</button>
                   </div>
                 </div>
-
                 <div style={css.card}>
                   <div style={{fontWeight:700,marginBottom:4}}>{group.name}</div>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
-                    <span style={{fontSize:12}}>Group Code: <strong style={{color:T.accent,letterSpacing:2}}>{group.code}</strong></span>
-                    <button onClick={()=>{navigator.clipboard.writeText(group.code||"");alert("Group code copied!");}} style={{...css.btn,padding:"3px 10px",fontSize:11,borderRadius:8}}>📋 Copy</button>
+                    <span style={{fontSize:12}}>Code: <strong style={{color:T.accent,letterSpacing:2}}>{group.code}</strong></span>
+                    <button onClick={()=>{navigator.clipboard.writeText(group.code||"");alert("Copied!");}} style={{...css.btn,padding:"3px 10px",fontSize:11,borderRadius:8}}>📋 Copy</button>
                   </div>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:16}}>Share this code with friends to invite them</div>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:12}}>Share this code to invite friends</div>
                   {groupMembers.map((m,i)=>{
                     const online=onlineMembers.find(o=>o.user_id===m.id);
                     return(
-                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${T.border}`}}>
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.border}`}}>
                         <div style={css.av()}>{(m.username||"?")[0].toUpperCase()}</div>
                         <div style={{flex:1}}>
                           <div style={{fontWeight:600,fontSize:13}}>{m.username}{m.id===authUser?.id?" (you)":""}</div>
@@ -1302,13 +1324,13 @@ export default function StudyGrove() {
                       </div>
                     );
                   })}
-                  <div style={{marginTop:14,borderTop:`1px solid ${T.border}`,paddingTop:12}}>
-                    <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>🔕 Mute Group Chat</div>
+                  <div style={{marginTop:12,borderTop:`1px solid ${T.border}`,paddingTop:10}}>
+                    <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>🔕 Mute Group Chat</div>
                     {isGroupMuted(group?.id)?(
-                      <button style={{...css.btnO,width:"100%",fontSize:12,marginBottom:8}} onClick={()=>unmuteGroup(group?.id)}>🔔 Unmute Group</button>
+                      <button style={{...css.btnO,width:"100%",fontSize:12,marginBottom:6}} onClick={()=>unmuteGroup(group?.id)}>🔔 Unmute</button>
                     ):(
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-                        {[["1","1 hour"],["8","8 hours"],["24","24 hours"],["forever","Forever"]].map(([val,label])=>(
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+                        {[["1","1h"],["8","8h"],["24","24h"],["forever","Forever"]].map(([val,label])=>(
                           <button key={val} onClick={()=>muteGroup(group?.id,val)} style={{...css.btnO,fontSize:11,padding:"4px 10px"}}>{label}</button>
                         ))}
                       </div>
@@ -1318,144 +1340,10 @@ export default function StudyGrove() {
                 </div>
               </div>
             )}
-          </div>
-        )}
 
-        {tab==="leaderboard"&&(
-          <div>
-            <div style={{display:"flex",gap:8,marginBottom:16}}>
-              {["daily","weekly","monthly"].map(f=>(
-                <button key={f} style={css.tBtn(leaderboardFrame===f)} onClick={()=>setLeaderboardFrame(f)}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>
-              ))}
-            </div>
-            {!group?(
-              <div style={{...css.card,textAlign:"center",padding:40}}>
-                <div style={{fontSize:48}}>🏆</div>
-                <div style={{fontWeight:700,fontSize:18,marginTop:12}}>Join a group to see rankings</div>
-                <button style={{...css.btn,marginTop:16}} onClick={()=>setShowGroupModal(true)}>Join a Group</button>
-              </div>
-            ):(
-              <div style={css.card}>
-                <div style={{fontWeight:700,marginBottom:4}}>🏆 {group.name}</div>
-                <div style={{fontSize:12,color:T.sub,marginBottom:16}}>{leaderboardFrame} rankings — updates when members study</div>
-                {leaderboard.length===0&&<div style={{color:T.sub,fontSize:13}}>No data yet — start studying!</div>}
-                {leaderboard.map((m,i)=>(
-                  <div key={m.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 0",borderBottom:`1px solid ${T.border}`,background:i===0?`${T.accent}10`:"transparent",borderRadius:i===0?8:0,paddingLeft:i===0?8:0}}>
-                    <div style={{width:32,textAlign:"center",fontWeight:900,fontSize:i===0?20:15,color:i===0?T.accent:i===1?"#c0c0c0":i===2?"#cd7f32":T.sub}}>
-                      {i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}`}
-                    </div>
-                    <div style={css.av()}>{(m.username||"?")[0].toUpperCase()}</div>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:14}}>{m.username}{m.id===authUser?.id&&<span style={{fontSize:11,color:T.accent}}> (you)</span>}</div>
-                      <div style={{fontSize:11,color:T.sub}}>🔥 {m.stats?.streak||0} day streak</div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontWeight:700,color:T.accent}}>{fmtMins(leaderboardFrame==="weekly"?(m.stats?.weekly_minutes||0):leaderboardFrame==="daily"?(m.stats?.today_minutes||0):(m.stats?.total_minutes||0))}</div>
-                      <div style={{fontSize:11,color:T.sub}}>studied</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {tab==="stats"&&(
-          <div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:16}}>
-              {/* Streak card */}
-            <div style={{...css.card,gridColumn:"1/-1",background:`linear-gradient(135deg,${T.card},${T.surface})`,border:`1.5px solid ${getStreakFlame(stats.streak||0).color}40`,marginBottom:12}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-                <div style={{display:"flex",alignItems:"center",gap:12}}>
-                  <span style={{fontSize:48}}>{getStreakFlame(stats.streak||0).icon}</span>
-                  <div>
-                    <div style={{fontWeight:900,fontSize:32,color:getStreakFlame(stats.streak||0).color,lineHeight:1}}>{stats.streak||0}</div>
-                    <div style={{fontSize:13,color:T.sub}}>day streak · <span style={{color:getStreakFlame(stats.streak||0).color,fontWeight:700}}>{getStreakFlame(stats.streak||0).label}</span></div>
-                    <div style={{fontSize:11,color:T.sub,marginTop:4}}>Study 25+ min/day to keep your streak</div>
-                  </div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:T.text}}>🛡️ Revives left: <span style={{color:getRevivesLeft()>0?T.accent:"#cc2222"}}>{getRevivesLeft()}/3</span></div>
-                  <div style={{fontSize:11,color:T.sub,marginTop:4}}>Resets every month</div>
-                  {getRevivesLeft()===0&&<div style={{fontSize:11,color:"#f59e0b",marginTop:4}}>Extra revives: $0.99 (coming soon)</div>}
-                </div>
-              </div>
-              {/* Streak progress bar to next level */}
-              {(()=>{
-                const s=stats.streak||0;
-                const levels=[7,14,90,180,365];
-                const next=levels.find(l=>s<l)||365;
-                const prev=levels[levels.indexOf(next)-1]||0;
-                const pct=Math.min(100,((s-prev)/(next-prev))*100);
-                return(
-                  <div style={{marginTop:12}}>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.sub,marginBottom:4}}>
-                      <span>{s} days</span><span>Next level: {next} days</span>
-                    </div>
-                    <div style={{height:6,background:T.border,borderRadius:3}}><div style={{height:"100%",background:getStreakFlame(stats.streak||0).color,borderRadius:3,width:`${pct}%`,transition:"width 0.5s"}}/></div>
-                  </div>
-                );
-              })()}
-            </div>
-
-            {[{l:"Total Hours",v:fmtMins(stats.total_minutes||0),i:"⏱"},{l:"Sessions",v:stats.total_sessions||0,i:"📚"},{l:"Pomodoros",v:stats.pomodoros_total||0,i:"🍅"},{l:"Tasks Done",v:stats.tasks_completed||0,i:"✅"},{l:"Achievements",v:`${(stats.achievements||[]).length}/${ACHIEVEMENTS.length}`,i:"🎖"}].map(s=>(
-                <div key={s.l} style={{...css.card,textAlign:"center",padding:16}}>
-                  <div style={{fontSize:24}}>{s.i}</div>
-                  <div style={{fontWeight:900,fontSize:18,color:T.accent,marginTop:4}}>{s.v}</div>
-                  <div style={{fontSize:11,color:T.sub,marginTop:2}}>{s.l}</div>
-                </div>
-              ))}
-            </div>
-            <div style={css.card}>
-              <div style={{fontWeight:700,marginBottom:12}}>🎯 Subject Distribution</div>
-              {Object.keys(stats.subject_minutes||{}).length===0&&<div style={{color:T.sub,fontSize:13}}>Start studying to see your breakdown</div>}
-              {Object.entries(stats.subject_minutes||{}).map(([sub,mins])=>{
-                const total=Object.values(stats.subject_minutes||{}).reduce((a,b)=>a+b,1);
-                const pct=Math.round((mins/total)*100);
-                return(<div key={sub} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
-                  <span style={{width:90,fontSize:12,color:T.text}}>{sub}</span>
-                  <div style={{flex:1,height:8,background:T.border,borderRadius:4}}><div style={{height:"100%",background:T.accent,borderRadius:4,width:`${pct}%`}}/></div>
-                  <span style={{fontSize:12,color:T.accent,fontWeight:600,width:80,textAlign:"right"}}>{pct}% · {fmtMins(mins)}</span>
-                </div>);
-              })}
-            </div>
-          </div>
-        )}
-
-        {tab==="tasks"&&(
-          <div>
-            <div style={css.card}>
-              <div style={{fontWeight:700,marginBottom:12}}>➕ Add Task</div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                <input style={{...css.input,flex:1,minWidth:200}} placeholder="What do you need to study?" value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()}/>
-                <select style={{...css.input,width:140}} value={newTaskSubject} onChange={e=>setNewTaskSubject(e.target.value)}>
-                  {subjects.map(s=><option key={s} value={s}>{s}</option>)}
-                </select>
-                <button style={css.btn} onClick={addTask}>Add</button>
-              </div>
-            </div>
-            <div style={css.card}>
-              <div style={{fontWeight:700,marginBottom:12}}>📋 Tasks ({tasks.filter(t=>!t.done).length} remaining)</div>
-              {tasks.length===0&&<div style={{color:T.sub,fontSize:13}}>No tasks yet. Add one above!</div>}
-              {tasks.map(t=>(
-                <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${T.border}`}}>
-                  <button onClick={()=>toggleTask(t)} style={{width:22,height:22,borderRadius:6,border:`2px solid ${t.done?T.accent:T.border}`,background:t.done?T.accent:"transparent",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    {t.done&&<span style={{color:"#000",fontSize:12,fontWeight:900}}>✓</span>}
-                  </button>
-                  <span style={{flex:1,fontSize:13,textDecoration:t.done?"line-through":"none",color:t.done?T.sub:T.text}}>{t.text}</span>
-                  <span style={{fontSize:11,color:T.accent,padding:"2px 8px",background:`${T.accent}18`,borderRadius:20}}>{t.subject}</span>
-                  <button onClick={()=>deleteTask(t.id)} style={{background:"transparent",border:"none",color:T.sub,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {tab==="friends"&&(
-          <div>
-            {/* Pending requests */}
+            {/* ── FRIENDS SECTION ── */}
             {friendRequests.length>0&&(
-              <div style={{...css.card,border:`1.5px solid #f59e0b`}}>
+              <div style={{...css.card,border:`1.5px solid #f59e0b`,marginBottom:0}}>
                 <div style={{fontWeight:700,marginBottom:12,color:"#f59e0b"}}>📬 Friend Requests ({friendRequests.length})</div>
                 {friendRequests.map(r=>(
                   <div key={r.friendship_id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${T.border}`}}>
@@ -1470,8 +1358,6 @@ export default function StudyGrove() {
                 ))}
               </div>
             )}
-
-            {/* Search */}
             <div style={css.card}>
               <div style={{fontWeight:700,marginBottom:4}}>🔍 Add a Friend</div>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
@@ -1497,11 +1383,9 @@ export default function StudyGrove() {
                 </div>
               )}
             </div>
-
-            {/* Friends list */}
             <div style={css.card}>
               <div style={{fontWeight:700,marginBottom:12}}>👥 Friends ({friends.length})</div>
-              {friends.length===0&&<div style={{color:T.sub,fontSize:13}}>No friends yet. Share your code <strong style={{color:T.accent}}>#{profile?.friend_code}</strong> to get started!</div>}
+              {friends.length===0&&<div style={{color:T.sub,fontSize:13}}>No friends yet. Share your code <strong style={{color:T.accent}}>#{profile?.friend_code}</strong></div>}
               {friends.map((f,i)=>{
                 const online=onlineMembers.find(o=>o.user_id===f.id);
                 return(
@@ -1541,6 +1425,139 @@ export default function StudyGrove() {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {tab==="leaderboard"&&(
+          <div>
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              {["daily","weekly","monthly"].map(f=>(
+                <button key={f} style={css.tBtn(leaderboardFrame===f)} onClick={()=>setLeaderboardFrame(f)}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>
+              ))}
+            </div>
+            {!group?(
+              <div style={{...css.card,textAlign:"center",padding:40}}>
+                <div style={{fontSize:48}}>🏆</div>
+                <div style={{fontWeight:700,fontSize:18,marginTop:12}}>Join a group to see rankings</div>
+                <div style={{color:T.sub,fontSize:13,marginTop:8,marginBottom:20}}>Compete with your study group on the leaderboard</div>
+                <button style={css.btn} onClick={()=>setTab("social")}>Go to Social</button>
+              </div>
+            ):(
+              leaderboard.length===0?(
+                <div style={{...css.card,textAlign:"center",padding:40}}>
+                  <div style={{fontSize:48}}>📊</div>
+                  <div style={{fontWeight:700,fontSize:18,marginTop:12}}>No data yet</div>
+                  <div style={{color:T.sub,fontSize:13,marginTop:8}}>Start studying to appear on the leaderboard!</div>
+                </div>
+              ):(
+                <div style={css.card}>
+                  <div style={{fontWeight:700,marginBottom:16}}>🏆 {leaderboardFrame.charAt(0).toUpperCase()+leaderboardFrame.slice(1)} Rankings</div>
+                  {[...leaderboard].sort((a,b)=>{
+                    const key=leaderboardFrame==="daily"?"today_minutes":leaderboardFrame==="monthly"?"total_minutes":"weekly_minutes";
+                    return (b.stats?.[key]||0)-(a.stats?.[key]||0);
+                  }).map((m,i)=>{
+                    const key=leaderboardFrame==="daily"?"today_minutes":leaderboardFrame==="monthly"?"total_minutes":"weekly_minutes";
+                    const mins=m.stats?.[key]||0;
+                    const isMe=m.id===authUser?.id;
+                    const medals=["🥇","🥈","🥉"];
+                    return(
+                      <div key={m.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:`1px solid ${T.border}`,background:isMe?`${T.accent}08`:"transparent",borderRadius:isMe?8:0,padding:isMe?"12px 10px":"14px 0"}}>
+                        <div style={{fontSize:i<3?22:14,fontWeight:700,width:28,textAlign:"center",color:i<3?undefined:T.sub}}>{i<3?medals[i]:`#${i+1}`}</div>
+                        <div style={css.av()}>{(m.username||"?")[0].toUpperCase()}</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:700,fontSize:14,color:isMe?T.accent:T.text}}>{m.username}{isMe?" (you)":""}</div>
+                          <div style={{fontSize:11,color:T.sub,marginTop:2}}>🔥 {m.stats?.streak||0} day streak</div>
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontWeight:900,fontSize:16,color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":T.text}}>{fmtMins(mins)}</div>
+                          <div style={{fontSize:10,color:T.sub}}>{leaderboardFrame}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            )}
+          </div>
+        )}
+
+        {tab==="stats"&&(
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+              <div style={{...css.card,gridColumn:"1/-1"}}>
+                <div style={{fontWeight:700,marginBottom:16}}>📊 Overview</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,textAlign:"center"}}>
+                  {[
+                    {label:"Today",val:fmtMins(stats.today_minutes||0),icon:"📅"},
+                    {label:"This Week",val:fmtMins(stats.weekly_minutes||0),icon:"📆"},
+                    {label:"Total",val:fmtMins(stats.total_minutes||0),icon:"⏱"},
+                    {label:"Streak",val:`${stats.streak||0}d`,icon:getStreakFlame(stats.streak||0).icon},
+                  ].map(s=>(
+                    <div key={s.label} style={{padding:16,background:T.surface,borderRadius:12,border:`1px solid ${T.border}`}}>
+                      <div style={{fontSize:24}}>{s.icon}</div>
+                      <div style={{fontSize:20,fontWeight:900,color:T.accent,marginTop:6}}>{s.val}</div>
+                      <div style={{fontSize:11,color:T.sub,marginTop:4}}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={css.card}>
+                <div style={{fontWeight:700,marginBottom:12}}>📚 Subject Breakdown</div>
+                {Object.keys(stats.subject_minutes||{}).length===0
+                  ?<div style={{color:T.sub,fontSize:13}}>Start studying to see your subject stats</div>
+                  :Object.entries(stats.subject_minutes||{}).sort((a,b)=>b[1]-a[1]).map(([sub,mins])=>{
+                    const max=Math.max(...Object.values(stats.subject_minutes||{}),1);
+                    return(<div key={sub} style={{marginBottom:12}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:13,marginBottom:4}}>
+                        <span style={{fontWeight:600}}>{sub}</span>
+                        <span style={{color:T.accent,fontWeight:700}}>{fmtMins(mins)}</span>
+                      </div>
+                      <div style={{height:6,background:T.border,borderRadius:3}}>
+                        <div style={{height:"100%",background:T.accent,borderRadius:3,width:`${(mins/max)*100}%`,transition:"width 0.5s"}}/>
+                      </div>
+                    </div>);
+                  })
+                }
+              </div>
+
+              <div style={css.card}>
+                <div style={{fontWeight:700,marginBottom:12}}>🔥 Streak Info</div>
+                <div style={{textAlign:"center",padding:"16px 0"}}>
+                  <div style={{fontSize:48}}>{getStreakFlame(stats.streak||0).icon}</div>
+                  <div style={{fontSize:36,fontWeight:900,color:getStreakFlame(stats.streak||0).color,marginTop:8}}>{stats.streak||0}</div>
+                  <div style={{fontSize:13,color:T.sub,marginTop:4}}>day streak · {getStreakFlame(stats.streak||0).label}</div>
+                </div>
+                <div style={{marginTop:8}}>
+                  {[[7,"🟡","7-day"],[14,"🟠","14-day"],[90,"🔴","90-day"],[180,"💜","180-day"],[365,"💙","365-day"]].map(([n,icon,label])=>(
+                    <div key={n} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.border}`,opacity:(stats.streak||0)>=n?1:0.35}}>
+                      <span style={{fontSize:18}}>{icon}</span>
+                      <span style={{fontSize:13,flex:1}}>{label} streak</span>
+                      {(stats.streak||0)>=n?<span style={{fontSize:11,color:T.accent,fontWeight:700}}>✓ Reached</span>:<span style={{fontSize:11,color:T.sub}}>{n-(stats.streak||0)} days left</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{...css.card,gridColumn:"1/-1"}}>
+                <div style={{fontWeight:700,marginBottom:12}}>🏆 Leaderboard Position</div>
+                <div style={{color:T.sub,fontSize:13}}>Check the <span style={{color:T.accent,cursor:"pointer",fontWeight:700}} onClick={()=>{}}>🏆 Ranks</span> tab to see where you stand</div>
+                <div style={{display:"flex",gap:16,marginTop:12,flexWrap:"wrap"}}>
+                  <div style={{padding:"12px 20px",background:T.surface,borderRadius:10,border:`1px solid ${T.border}`,textAlign:"center"}}>
+                    <div style={{fontSize:11,color:T.sub}}>Total sessions</div>
+                    <div style={{fontSize:22,fontWeight:900,color:T.accent,marginTop:4}}>{stats.sessions_count||0}</div>
+                  </div>
+                  <div style={{padding:"12px 20px",background:T.surface,borderRadius:10,border:`1px solid ${T.border}`,textAlign:"center"}}>
+                    <div style={{fontSize:11,color:T.sub}}>Longest session</div>
+                    <div style={{fontSize:22,fontWeight:900,color:T.accent,marginTop:4}}>{fmtMins(stats.longest_session||0)}</div>
+                  </div>
+                  <div style={{padding:"12px 20px",background:T.surface,borderRadius:10,border:`1px solid ${T.border}`,textAlign:"center"}}>
+                    <div style={{fontSize:11,color:T.sub}}>Badges earned</div>
+                    <div style={{fontSize:22,fontWeight:900,color:T.accent,marginTop:4}}>{(stats.achievements||[]).length}/{ACHIEVEMENTS.length}</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -1645,26 +1662,6 @@ export default function StudyGrove() {
             </div>
 
             {/* Profile Picture */}
-            <div style={css.card}>
-              <div style={{fontWeight:700,marginBottom:12}}>📸 Profile Picture</div>
-              <div style={{display:"flex",alignItems:"center",gap:16}}>
-                <div style={{width:64,height:64,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:24,color:"#000",overflow:"hidden",border:selectedFrame&&selectedFrame!=="none"?`3px solid ${FRAMES[selectedFrame]?.color||T.accent}`:"none",flexShrink:0}}>
-                  {avatarUrl
-                    ?<img src={avatarUrl} style={{width:"100%",height:"100%",objectFit:"cover"}} alt="pfp"/>
-                    :<span>{(profile?.username||"?")[0].toUpperCase()}</span>
-                  }
-                </div>
-                <div style={{flex:1}}>
-                  <input type="file" accept="image/*" id="pfp-upload" style={{display:"none"}} onChange={e=>{if(e.target.files[0])uploadPfp(e.target.files[0]);e.target.value="";}}/>
-                  <button onClick={()=>document.getElementById("pfp-upload").click()} style={{...css.btn,padding:"8px 16px",fontSize:13,cursor:"pointer"}}>
-                    {uploadingPfp?"⏳ Uploading...":"📷 Upload Photo"}
-                  </button>
-                  {avatarUrl&&<button onClick={async()=>{setAvatarUrl(null);await supabase.from("profiles").update({avatar_url:null}).eq("id",authUser.id);}} style={{...css.btnO,marginLeft:8,padding:"8px 12px",fontSize:12,color:"#cc2222",borderColor:"#cc2222"}}>Remove</button>}
-                  <div style={{fontSize:11,color:T.sub,marginTop:6}}>JPG, PNG, GIF supported</div>
-                </div>
-              </div>
-            </div>
-
             {/* Profile Frames */}
             <div style={css.card}>
               <div style={{fontWeight:700,marginBottom:12}}>🖼️ Profile Frames</div>
