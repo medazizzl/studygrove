@@ -71,7 +71,27 @@ const fmtMins = (m) => {
 };
 const genCode = () => Math.random().toString(36).substring(2,8).toUpperCase();
 
-// ── FRAMES ────────────────────────────────────────────────────────────────────
+const QUOTES = {
+  default: [
+    "Small steps every day lead to big results.",
+    "The expert was once a beginner.",
+    "Study hard now, flex later.",
+    "Discipline beats motivation every time.",
+    "Your future self is watching. Don't let them down.",
+    "One session at a time.",
+  ],
+  Math: ["Math is not about numbers, it's about understanding.", "Every problem has a solution — find it.", "Practice makes permanent."],
+  Physics: ["Physics is the poetry of nature.", "Understand the 'why', not just the 'what'.", "Newton had an apple. You have StudyGrove."],
+  Chemistry: ["Chemistry is everywhere — even in your focus.", "Balance the equation, balance your effort.", "Reactions happen when you put in the energy."],
+  SVT: ["Life is complex — understand it deeply.", "Biology is the science of possibilities.", "Every cell in your body is rooting for you."],
+  French: ["La pratique fait la perfection.", "Every language opens a new world.", "Consistency is the key to fluency."],
+  English: ["Words are your most powerful tool.", "Read more. Write more. Know more.", "Language learning is a marathon, not a sprint."],
+  Arabic: ["العلم نور — Knowledge is light.", "تعلم كل يوم شيئًا جديدًا.", "الصبر مفتاح الفرج."],
+  Philosophy: ["The unexamined life is not worth living.", "Question everything — that's where wisdom starts.", "Think deeply. Act wisely."],
+  Informatics: ["Code is just logic made visible.", "Every bug is a lesson in disguise.", "Debug your mind, then your code."],
+};
+
+// ── FRAMES ───────────────────────────────────────────────────────────────────
 const FRAMES = {
   // Free
   sprout:    { id:"sprout",    name:"Sprout",    premium:false, colors:["#1b5e20","#4caf50","#a5d6a7","#4caf50","#1b5e20"], anim:"none",      particles:null },
@@ -527,6 +547,8 @@ export default function StudyGrove() {
           today_minutes:(stats.today_minutes||0)+mins,
           weekly_minutes:(stats.weekly_minutes||0)+mins,
           total_sessions:(stats.total_sessions||0)+1,
+          sessions_count:(stats.sessions_count||0)+1,
+          longest_session:Math.max(stats.longest_session||0, mins),
           subject_minutes:{...(stats.subject_minutes||{}),[selectedSubject]:((stats.subject_minutes||{})[selectedSubject]||0)+mins},
           invisible_minutes:invisible?(stats.invisible_minutes||0)+mins:(stats.invisible_minutes||0),
         };
@@ -1287,6 +1309,8 @@ export default function StudyGrove() {
           <button onClick={()=>setShowMobileMenu(v=>!v)} style={{background:"transparent",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:16,color:T.text,lineHeight:1}}>☰</button>
         </div>}
 
+      </div>{/* ── END HEADER ── */}
+
       {isMobile&&showMobileMenu&&(
         <div style={{position:"fixed",top:58,right:12,zIndex:500,background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:12,display:"flex",flexDirection:"column",gap:8,minWidth:180,boxShadow:`0 10px 40px rgba(0,0,0,0.5)`}}>
           <button style={{...css.btnO,fontSize:13,textAlign:"left"}} onClick={()=>{setInvisible(v=>!v);setShowMobileMenu(false);}}>{invisible?"👻 Go Visible":"🟢 Go Invisible"}</button>
@@ -1343,11 +1367,6 @@ export default function StudyGrove() {
                 <button onClick={()=>{setFocusMode(true);if(!studying)startStop();}} style={{...css.btnO,fontSize:12,padding:"4px 12px"}}>🎯 Focus Mode</button>
               </div>
               {pomodoroMode&&<div style={{marginTop:10,height:4,background:T.border,borderRadius:2}}><div style={{height:"100%",background:T.accent,borderRadius:2,width:`${pomPct}%`,transition:"width 1s linear"}}/></div>}
-              {studying&&(
-                <div style={{marginTop:14,padding:"10px 16px",background:T.surface,borderRadius:10,border:`1px solid ${isPro?T.border:T.border}`,borderStyle:isPro?"solid":"dashed",fontSize:13,color:T.sub,fontStyle:"italic",textAlign:"center"}}>
-                  {isPro&&currentQuote?`💬 ${currentQuote}`:<span>💬 Subject quotes — <span style={{color:T.accent,cursor:"pointer",fontWeight:700}} onClick={()=>setShowProModal(true)}>Pro feature</span></span>}
-                </div>
-              )}
             </div>
 
             <div style={css.card}>
