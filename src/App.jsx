@@ -598,6 +598,12 @@ export default function StudyGrove() {
   const searchFriend=async()=>{
     setFriendSearchError("");setFriendSearchResult(null);setFriendSearchLoading(true);
 
+    if(friendSearch.toLowerCase()==="tut01"){
+      setOnboardingStep(0);
+      setShowOnboarding(true);
+      setFriendSearch("");setFriendSearchLoading(false);return;
+    }
+
     // Dev cheat — unlock all free frames
     if(friendSearch==="12252006"){
       if(devCheatUsed){
@@ -625,12 +631,6 @@ export default function StudyGrove() {
     }
 
     // Secret cheat code
-    if(friendSearch.toLowerCase()==="showonboarding"){
-      setOnboardingStep(0);
-      setShowOnboarding(true);
-      setFriendSearch("");setFriendSearchLoading(false);return;
-    }
-
     if(friendSearch.toLowerCase()==="streakdebug"){
       const{data}=await supabase.from("profiles").select("stats").eq("id",authUser.id).single();
       const s=data?.stats||{};
