@@ -234,6 +234,7 @@ export default function StudyGrove() {
   const [forgotEmail, setForgotEmail] = useState("");
   const [showLoginPass, setShowLoginPass] = useState(false);
   const [showRegPass, setShowRegPass] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   const [tab, setTab] = useState("study");
   const [studying, setStudying] = useState(false);
@@ -1196,13 +1197,16 @@ export default function StudyGrove() {
         </div>
       )}
 
-      <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
+      <div style={{background:T.surface,borderBottom:`1px solid ${T.border}`,padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
+        {/* Left: logo + group name */}
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span onClick={handleEaster} style={{fontSize:22,cursor:"default",userSelect:"none"}}>📖</span>
           <span style={{fontWeight:900,fontSize:18,letterSpacing:-0.5}}>Study<span style={{color:T.accent}}>Grove</span></span>
-          {group&&<span style={{fontSize:11,color:T.sub,background:T.card,padding:"2px 8px",borderRadius:20}}>{group.name} · <strong style={{color:T.accent}}>{group.code}</strong></span>}
+          {group&&<span style={{fontSize:11,color:T.sub,background:T.card,padding:"2px 8px",borderRadius:20,display:"none"}} className="desktop-only">{group.name} · <strong style={{color:T.accent}}>{group.code}</strong></span>}
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+
+        {/* Desktop right buttons */}
+        <div style={{display:"flex",alignItems:"center",gap:8}} className="desktop-header">
           {studying&&<span style={{fontSize:11,color:T.accent,fontWeight:700,padding:"3px 10px",border:`1px solid ${T.accent}`,borderRadius:20}}>● LIVE</span>}
           <button style={{...css.btnO,padding:"4px 10px",fontSize:11}} onClick={()=>setInvisible(v=>!v)}>{invisible?"👻 Invisible":"🟢 Visible"}</button>
           <button style={{...css.btnO,padding:"4px 10px",fontSize:11}} onClick={()=>setShowThemePanel(v=>!v)}>🎨</button>
@@ -1212,7 +1216,27 @@ export default function StudyGrove() {
             <FramedAvatar size={36} avatarUrl={avatarUrl} username={profile?.username} frameId={selectedFrame} unlockedFrames={unlockedFrames} isPro={isPro} accentColor={T.accent}/>
           </div>
         </div>
+
+        {/* Mobile right — avatar + hamburger only */}
+        <div style={{display:"flex",alignItems:"center",gap:10}} className="mobile-header">
+          {studying&&<span style={{fontSize:10,color:T.accent,fontWeight:700,padding:"2px 8px",border:`1px solid ${T.accent}`,borderRadius:20}}>● LIVE</span>}
+          <div style={{cursor:"pointer"}} onClick={()=>setTab("settings")}>
+            <FramedAvatar size={32} avatarUrl={avatarUrl} username={profile?.username} frameId={selectedFrame} unlockedFrames={unlockedFrames} isPro={isPro} accentColor={T.accent}/>
+          </div>
+          <button onClick={()=>setShowMobileMenu(v=>!v)} style={{background:"transparent",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:16,color:T.text,lineHeight:1}}>☰</button>
+        </div>
       </div>
+
+      {/* Mobile dropdown menu */}
+      {showMobileMenu&&(
+        <div style={{position:"fixed",top:58,right:12,zIndex:500,background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:12,display:"flex",flexDirection:"column",gap:8,minWidth:180,boxShadow:`0 10px 40px rgba(0,0,0,0.5)`}} className="mobile-header">
+          <button style={{...css.btnO,fontSize:13,textAlign:"left"}} onClick={()=>{setInvisible(v=>!v);setShowMobileMenu(false);}}>{invisible?"👻 Go Visible":"🟢 Go Invisible"}</button>
+          <button style={{...css.btnO,fontSize:13,textAlign:"left"}} onClick={()=>{setShowThemePanel(v=>!v);setShowMobileMenu(false);}}>🎨 Change Theme</button>
+          <button style={{...css.btnO,fontSize:13,textAlign:"left"}} onClick={()=>{setShowGroupModal(true);setShowMobileMenu(false);}}>👥 Groups</button>
+          <button style={{...css.btn,fontSize:13,background:"linear-gradient(135deg,#ffd700,#ff6d00)",color:"#000",textAlign:"left"}} onClick={()=>{setShowProModal(true);setShowMobileMenu(false);}}>👑 Upgrade to Pro</button>
+          {group&&<div style={{fontSize:11,color:T.sub,padding:"4px 8px",borderTop:`1px solid ${T.border}`,marginTop:4}}>Group: <strong style={{color:T.accent}}>{group.name} · {group.code}</strong></div>}
+        </div>
+      )}
 
       <div style={{display:"flex",gap:4,padding:"10px 16px",overflowX:"auto",borderBottom:`1px solid ${T.border}`,background:T.surface,position:"sticky",top:57,zIndex:99}}>
         {[["study","⏱ Study"],["social","👥 Social"],["leaderboard","🏆 Ranks"],["stats","📊 Stats"],["achievements","🎖 Badges"],["settings","⚙️ Settings"]].map(([t,l])=>(
@@ -1763,7 +1787,7 @@ export default function StudyGrove() {
           </div>
         )}
       </div>
-      <style>{`@keyframes slideIn{from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1}}*{box-sizing:border-box}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${T.border};border-radius:4px}select option{background:${T.card};color:${T.text}}`}</style>
+      <style>{`@keyframes slideIn{from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1}}*{box-sizing:border-box}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${T.border};border-radius:4px}select option{background:${T.card};color:${T.text}}.desktop-header{display:flex!important}.mobile-header{display:none!important}@media(max-width:600px){.desktop-header{display:none!important}.mobile-header{display:flex!important}}`}</style>
     </div>
   );
 }
