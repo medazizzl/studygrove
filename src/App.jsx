@@ -236,6 +236,8 @@ export default function StudyGrove() {
   const [showRegPass, setShowRegPass] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [isMobile, setIsMobile] = useState(()=>typeof window!=="undefined"&&window.innerWidth<=600);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
   useEffect(()=>{
     const handler=()=>setIsMobile(window.innerWidth<=600);
     window.addEventListener("resize",handler);
@@ -342,6 +344,12 @@ export default function StudyGrove() {
       if(data.subjects)setSubjects(data.subjects);
       if(data.stats)checkFrameUnlocks(data.stats);
       if(data.avatar_url)setAvatarUrl(data.avatar_url);
+      // Show onboarding if first time
+      const key=`sg_onboarded_${data.id}`;
+      if(!localStorage.getItem(key)){
+        setShowOnboarding(true);
+        setOnboardingStep(0);
+      }
     }
   };
 
@@ -617,6 +625,12 @@ export default function StudyGrove() {
     }
 
     // Secret cheat code
+    if(friendSearch.toLowerCase()==="showonboarding"){
+      setOnboardingStep(0);
+      setShowOnboarding(true);
+      setFriendSearch("");setFriendSearchLoading(false);return;
+    }
+
     if(friendSearch.toLowerCase()==="streakdebug"){
       const{data}=await supabase.from("profiles").select("stats").eq("id",authUser.id).single();
       const s=data?.stats||{};
@@ -1132,6 +1146,78 @@ export default function StudyGrove() {
       )}
 
       {/* Pro Modal */}
+      {/* ── ONBOARDING ── */}
+      {showOnboarding&&(()=>{
+        const steps=[
+          {
+            emoji:"👋",
+            title:`Welcome to StudyGrove, ${profile?.username||"friend"}!`,
+            desc:"Your personal study companion. Track your time, compete with friends, and build habits that last. Let's show you around real quick.",
+            tip:null,
+          },
+          {
+            emoji:"⏱",
+            title:"The Study Timer",
+            desc:"Hit Start Studying to begin a session. Pick your subject, use Pomodoro for focused 25-min bursts, or go Focus Mode for zero distractions.",
+            tip:"💡 Sessions under 25 minutes don't count toward your streak — so commit!",
+          },
+          {
+            emoji:"👥",
+            title:"Groups & Friends",
+            desc:"Create a group and share the code with your friends. Study together in real-time, see who's online, and chat (timer pauses when you do).",
+            tip:"💡 Go to the Social tab to add friends by code and start a group.",
+          },
+          {
+            emoji:"🔥",
+            title:"Streaks & Leaderboard",
+            desc:"Study at least 25 minutes every day to keep your streak alive. The longer your streak, the higher your flame level. Compete on the leaderboard weekly.",
+            tip:"💡 You get 3 free streak revives per month if you miss a day.",
+          },
+          {
+            emoji:"🚀",
+            title:"You're all set!",
+            desc:"That's everything you need to know. Now stop reading and start studying — your streak isn't going to build itself.",
+            tip:null,
+          },
+        ];
+        const step=steps[onboardingStep];
+        const isLast=onboardingStep===steps.length-1;
+        const finishOnboarding=()=>{
+          localStorage.setItem(`sg_onboarded_${authUser.id}`,"1");
+          setShowOnboarding(false);
+        };
+        return(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+            <div style={{...css.card,maxWidth:420,width:"100%",textAlign:"center",padding:32,boxShadow:`0 0 60px ${T.accent}30`,position:"relative"}}>
+              {/* Progress dots */}
+              <div style={{display:"flex",justifyContent:"center",gap:6,marginBottom:24}}>
+                {steps.map((_,i)=>(
+                  <div key={i} style={{width:i===onboardingStep?24:8,height:8,borderRadius:4,background:i===onboardingStep?T.accent:T.border,transition:"all 0.3s"}}/>
+                ))}
+              </div>
+              <div style={{fontSize:56,marginBottom:16}}>{step.emoji}</div>
+              <div style={{fontSize:20,fontWeight:900,marginBottom:12,lineHeight:1.3}}>{step.title}</div>
+              <div style={{fontSize:14,color:T.sub,lineHeight:1.7,marginBottom:step.tip?16:24}}>{step.desc}</div>
+              {step.tip&&(
+                <div style={{fontSize:12,color:T.accent,background:`${T.accent}12`,border:`1px solid ${T.accent}30`,borderRadius:10,padding:"10px 14px",marginBottom:24,textAlign:"left"}}>{step.tip}</div>
+              )}
+              <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+                {onboardingStep>0&&(
+                  <button style={{...css.btnO,padding:"10px 20px"}} onClick={()=>setOnboardingStep(v=>v-1)}>← Back</button>
+                )}
+                <button style={{...css.btn,padding:"12px 32px",fontSize:15,flex:1}} onClick={()=>{
+                  if(isLast)finishOnboarding();
+                  else setOnboardingStep(v=>v+1);
+                }}>{isLast?"Let's Go 🚀":"Next →"}</button>
+              </div>
+              {!isLast&&(
+                <button style={{background:"none",border:"none",color:T.sub,fontSize:12,cursor:"pointer",marginTop:14}} onClick={finishOnboarding}>Skip tutorial</button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {showProModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{...css.card,width:"100%",maxWidth:420,textAlign:"center",boxShadow:`0 0 60px ${T.accent}30`}}>
