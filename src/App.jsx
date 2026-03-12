@@ -235,6 +235,12 @@ export default function StudyGrove() {
   const [showLoginPass, setShowLoginPass] = useState(false);
   const [showRegPass, setShowRegPass] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [isMobile, setIsMobile] = useState(()=>typeof window!=="undefined"&&window.innerWidth<=600);
+  useEffect(()=>{
+    const handler=()=>setIsMobile(window.innerWidth<=600);
+    window.addEventListener("resize",handler);
+    return()=>window.removeEventListener("resize",handler);
+  },[]);
 
   const [tab, setTab] = useState("study");
   const [studying, setStudying] = useState(false);
@@ -1206,7 +1212,7 @@ export default function StudyGrove() {
         </div>
 
         {/* Desktop right buttons */}
-        <div style={{display:"flex",alignItems:"center",gap:8}} className="desktop-header">
+        {!isMobile&&<div style={{display:"flex",alignItems:"center",gap:8}}>
           {studying&&<span style={{fontSize:11,color:T.accent,fontWeight:700,padding:"3px 10px",border:`1px solid ${T.accent}`,borderRadius:20}}>● LIVE</span>}
           <button style={{...css.btnO,padding:"4px 10px",fontSize:11}} onClick={()=>setInvisible(v=>!v)}>{invisible?"👻 Invisible":"🟢 Visible"}</button>
           <button style={{...css.btnO,padding:"4px 10px",fontSize:11}} onClick={()=>setShowThemePanel(v=>!v)}>🎨</button>
@@ -1215,21 +1221,19 @@ export default function StudyGrove() {
           <div style={{cursor:"pointer"}} onClick={()=>setTab("settings")}>
             <FramedAvatar size={36} avatarUrl={avatarUrl} username={profile?.username} frameId={selectedFrame} unlockedFrames={unlockedFrames} isPro={isPro} accentColor={T.accent}/>
           </div>
-        </div>
+        </div>}
 
         {/* Mobile right — avatar + hamburger only */}
-        <div style={{display:"flex",alignItems:"center",gap:10}} className="mobile-header">
+        {isMobile&&<div style={{display:"flex",alignItems:"center",gap:8}}>
           {studying&&<span style={{fontSize:10,color:T.accent,fontWeight:700,padding:"2px 8px",border:`1px solid ${T.accent}`,borderRadius:20}}>● LIVE</span>}
           <div style={{cursor:"pointer"}} onClick={()=>setTab("settings")}>
             <FramedAvatar size={32} avatarUrl={avatarUrl} username={profile?.username} frameId={selectedFrame} unlockedFrames={unlockedFrames} isPro={isPro} accentColor={T.accent}/>
           </div>
           <button onClick={()=>setShowMobileMenu(v=>!v)} style={{background:"transparent",border:`1px solid ${T.border}`,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:16,color:T.text,lineHeight:1}}>☰</button>
-        </div>
-      </div>
+        </div>}
 
-      {/* Mobile dropdown menu */}
-      {showMobileMenu&&(
-        <div style={{position:"fixed",top:58,right:12,zIndex:500,background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:12,display:"flex",flexDirection:"column",gap:8,minWidth:180,boxShadow:`0 10px 40px rgba(0,0,0,0.5)`}} className="mobile-header">
+      {isMobile&&showMobileMenu&&(
+        <div style={{position:"fixed",top:58,right:12,zIndex:500,background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:12,display:"flex",flexDirection:"column",gap:8,minWidth:180,boxShadow:`0 10px 40px rgba(0,0,0,0.5)`}}>
           <button style={{...css.btnO,fontSize:13,textAlign:"left"}} onClick={()=>{setInvisible(v=>!v);setShowMobileMenu(false);}}>{invisible?"👻 Go Visible":"🟢 Go Invisible"}</button>
           <button style={{...css.btnO,fontSize:13,textAlign:"left"}} onClick={()=>{setShowThemePanel(v=>!v);setShowMobileMenu(false);}}>🎨 Change Theme</button>
           <button style={{...css.btnO,fontSize:13,textAlign:"left"}} onClick={()=>{setShowGroupModal(true);setShowMobileMenu(false);}}>👥 Groups</button>
