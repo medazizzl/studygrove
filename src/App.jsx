@@ -238,6 +238,17 @@ export default function StudyGrove() {
   const [isMobile, setIsMobile] = useState(()=>typeof window!=="undefined"&&window.innerWidth<=600);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+
+  const ONBOARDING_STEPS=[
+    {emoji:"👋",title:`Welcome to StudyGrove${profile?.username?", "+profile.username:""}!`,desc:"Your personal study companion. Track your time, compete with friends, and build habits that last. Let's show you around real quick.",tip:null},
+    {emoji:"⏱",title:"The Study Timer",desc:"Hit Start Studying to begin a session. Pick your subject, use Pomodoro for focused 25-min bursts, or go Focus Mode for zero distractions.",tip:"💡 Sessions under 25 minutes don't count toward your streak — so commit!"},
+    {emoji:"👥",title:"Groups & Friends",desc:"Create a group and share the code with your friends. Study together in real-time, see who's online, and chat whenever you want.",tip:"💡 Go to the Social tab to add friends by code and start a group."},
+    {emoji:"🔥",title:"Streaks & Leaderboard",desc:"Study at least 25 minutes every day to keep your streak alive. The longer your streak, the higher your flame level. Compete on the leaderboard weekly.",tip:"💡 You get 3 free streak revives per month if you miss a day."},
+    {emoji:"🚀",title:"You're all set!",desc:"That's everything you need to know. Now stop reading and start studying — your streak isn't going to build itself.",tip:null},
+  ];
+  const obStep=ONBOARDING_STEPS[onboardingStep]||ONBOARDING_STEPS[0];
+  const obIsLast=onboardingStep===ONBOARDING_STEPS.length-1;
+  const finishOnboarding=()=>{if(authUser)localStorage.setItem(`sg_onboarded_${authUser.id}`,"1");setShowOnboarding(false);};
   useEffect(()=>{
     const handler=()=>setIsMobile(window.innerWidth<=600);
     window.addEventListener("resize",handler);
@@ -598,7 +609,7 @@ export default function StudyGrove() {
   const searchFriend=async()=>{
     setFriendSearchError("");setFriendSearchResult(null);setFriendSearchLoading(true);
 
-    if(friendSearch.toLowerCase()==="tut01"){
+    if(friendSearch.toLowerCase()==="toot06"){
       setOnboardingStep(0);
       setShowOnboarding(true);
       setFriendSearch("");setFriendSearchLoading(false);return;
@@ -953,17 +964,6 @@ export default function StudyGrove() {
     dot:(st)=>({width:10,height:10,borderRadius:"50%",flexShrink:0,background:st==="studying"?T.accent:st==="idle"?"#f59e0b":st==="online"?"#22c55e":"transparent",border:st==="invisible"?`2px dashed ${T.sub}`:"none",display:"inline-block"}),
     av:()=>({width:36,height:36,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:14,color:"#000",flexShrink:0}),
   };
-
-  const ONBOARDING_STEPS=[
-    {emoji:"👋",title:`Welcome to StudyGrove, ${profile?.username||"friend"}!`,desc:"Your personal study companion. Track your time, compete with friends, and build habits that last. Let's show you around real quick.",tip:null},
-    {emoji:"⏱",title:"The Study Timer",desc:"Hit Start Studying to begin a session. Pick your subject, use Pomodoro for focused 25-min bursts, or go Focus Mode for zero distractions.",tip:"💡 Sessions under 25 minutes don't count toward your streak — so commit!"},
-    {emoji:"👥",title:"Groups & Friends",desc:"Create a group and share the code with your friends. Study together in real-time, see who's online, and chat (timer pauses when you do).",tip:"💡 Go to the Social tab to add friends by code and start a group."},
-    {emoji:"🔥",title:"Streaks & Leaderboard",desc:"Study at least 25 minutes every day to keep your streak alive. The longer your streak, the higher your flame level. Compete on the leaderboard weekly.",tip:"💡 You get 3 free streak revives per month if you miss a day."},
-    {emoji:"🚀",title:"You're all set!",desc:"That's everything you need to know. Now stop reading and start studying — your streak isn't going to build itself.",tip:null},
-  ];
-  const obStep=ONBOARDING_STEPS[onboardingStep]||ONBOARDING_STEPS[0];
-  const obIsLast=onboardingStep===ONBOARDING_STEPS.length-1;
-  const finishOnboarding=()=>{if(authUser)localStorage.setItem(`sg_onboarded_${authUser.id}`,"1");setShowOnboarding(false);};
 
   if(authLoading)return(
     <div style={{...css.app,display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh"}}>
