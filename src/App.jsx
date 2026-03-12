@@ -801,6 +801,31 @@ export default function StudyGrove() {
     setGroup(null);setGroupMembers([]);setMessages([]);setProfile(null);setStats({total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0,last_study_date:null});
   };
 
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteAccount=async()=>{
+    if(deleteConfirmText!=="DELETE")return;
+    setDeleting(true);
+    try{
+      const uid=authUser.id;
+      // Delete all user data
+      await supabase.from("tasks").delete().eq("user_id",uid);
+      await supabase.from("friendships").delete().or(`sender_id.eq.${uid},receiver_id.eq.${uid}`);
+      await supabase.from("group_members").delete().eq("user_id",uid);
+      await supabase.from("direct_messages").delete().or(`sender_id.eq.${uid},receiver_id.eq.${uid}`);
+      await supabase.from("messages").delete().eq("user_id",uid);
+      await supabase.from("profiles").delete().eq("id",uid);
+      await supabase.auth.signOut();
+      // Clear all local storage
+      localStorage.clear();
+    }catch(e){
+      setDeleting(false);
+      alert("Something went wrong. Try again.");
+    }
+  };
+
   const createGroup=async()=>{
     setGroupError("");
     if(!newGroupName.trim()){setGroupError("Enter a group name");return;}
@@ -1090,6 +1115,7 @@ export default function StudyGrove() {
               <span onClick={()=>setShowRegPass(v=>!v)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",fontSize:18,color:T.sub,userSelect:"none"}}>{showRegPass?"🙈":"👁️"}</span>
             </div>
             <button style={{...css.btn,width:"100%",padding:14,fontSize:15}} onClick={handleRegister}>Create Account</button>
+            <div style={{fontSize:11,color:T.sub,textAlign:"center",marginTop:12,lineHeight:1.6}}>By creating an account you agree to our <a href="/privacy.html" target="_blank" style={{color:T.accent}}>Privacy Policy</a></div>
           </>
         )}
       </div>
@@ -1205,6 +1231,32 @@ export default function StudyGrove() {
             {!obIsLast&&(
               <button style={{background:"none",border:"none",color:T.sub,fontSize:12,cursor:"pointer",marginTop:14}} onClick={finishOnboarding}>Skip tutorial</button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Account Modal */}
+      {showDeleteModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{...css.card,maxWidth:400,width:"100%",textAlign:"center",padding:32}}>
+            <div style={{fontSize:48}}>⚠️</div>
+            <div style={{fontWeight:900,fontSize:20,marginTop:12,color:"#ff4444"}}>Delete Account</div>
+            <div style={{fontSize:13,color:T.sub,marginTop:8,marginBottom:20,lineHeight:1.7}}>
+              This will permanently delete your profile, stats, streak, friends, tasks and all data. <strong style={{color:T.text}}>This cannot be undone.</strong>
+            </div>
+            <div style={{fontSize:13,color:T.sub,marginBottom:8}}>Type <strong style={{color:"#ff4444",letterSpacing:2}}>DELETE</strong> to confirm</div>
+            <input
+              style={{...css.input,marginBottom:16,textAlign:"center",letterSpacing:2,fontWeight:700,borderColor:deleteConfirmText==="DELETE"?"#ff4444":T.border}}
+              placeholder="DELETE"
+              value={deleteConfirmText}
+              onChange={e=>setDeleteConfirmText(e.target.value.toUpperCase())}
+            />
+            <button
+              style={{...css.btn,width:"100%",padding:14,background:deleteConfirmText==="DELETE"?"#cc2222":"#555",color:"#fff",marginBottom:8,cursor:deleteConfirmText==="DELETE"?"pointer":"not-allowed"}}
+              onClick={handleDeleteAccount}
+              disabled={deleteConfirmText!=="DELETE"||deleting}
+            >{deleting?"Deleting everything...":"💀 Delete My Account Forever"}</button>
+            <button style={{...css.btnO,width:"100%"}} onClick={()=>{setShowDeleteModal(false);setDeleteConfirmText("");}}>Cancel</button>
           </div>
         </div>
       )}
@@ -1768,6 +1820,8 @@ export default function StudyGrove() {
                 </div>
               </div>
               <button style={css.btnD} onClick={handleLogout}>Sign Out</button>
+              <button style={{...css.btnD,marginTop:8,background:"transparent",border:"1px solid #cc2222",color:"#cc2222",fontSize:12}} onClick={()=>{setShowDeleteModal(true);setDeleteConfirmText("");}}>🗑️ Delete Account</button>
+              <button style={{...css.btnD,marginTop:8,background:"transparent",border:"1px solid #cc2222",color:"#cc2222",width:"100%",fontSize:12}} onClick={()=>setShowDeleteModal(true)}>🗑️ Delete Account</button>
             </div>
             <div style={css.card}>
               <div style={{fontWeight:700,marginBottom:12}}>🎨 Themes</div>
@@ -1861,6 +1915,8 @@ export default function StudyGrove() {
               <div style={{fontWeight:700,marginBottom:4}}>📖 About</div>
               <div style={{fontSize:12,color:T.sub}}>StudyGrove v2.0 · Built by Aziz ZL</div>
               <div style={{fontSize:11,color:T.border,marginTop:8,fontStyle:"italic"}}>Click the 📖 logo 5 times for a secret...</div>
+              <div style={{marginTop:10,fontSize:12}}><a href="/privacy.html" target="_blank" style={{color:T.accent}}>📄 Privacy Policy</a></div>
+              <a href="/privacy.html" target="_blank" style={{display:"block",marginTop:10,fontSize:12,color:T.accent}}>Privacy Policy →</a>
             </div>
           </div>
         )}
