@@ -222,7 +222,9 @@ export default function StudyGrove() {
 
   const [authUser, setAuthUser] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [authScreen, setAuthScreen] = useState("login"); // login|register|otp|forgot|forgot_sent
+  const [authScreen, setAuthScreen] = useState("login"); // login|register|otp|forgot|forgot_sent|reset_password
+  const [newPassword, setNewPassword] = useState("");
+  const [showNewPass, setShowNewPass] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState("");
   const [authSuccess, setAuthSuccess] = useState("");
@@ -305,7 +307,15 @@ export default function StudyGrove() {
       setAuthUser(session?.user??null);
       setAuthLoading(false);
     });
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,session)=>setAuthUser(session?.user??null));
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
+      setAuthUser(session?.user??null);
+      if(event==="PASSWORD_RECOVERY") setAuthScreen("reset_password");
+    });
+    // Also catch token in URL hash on first load
+    const hash=window.location.hash;
+    if(hash.includes("type=recovery")||hash.includes("type=email")){
+      setAuthScreen("reset_password");
+    }
     return ()=>subscription.unsubscribe();
   },[]);
 
@@ -344,9 +354,11 @@ export default function StudyGrove() {
   };
 
   const saveStats=async(newStats)=>{
+    if(!authUser||!newStats||typeof newStats.streak==="undefined")return;
+    // Never save a streak of 0 if we already have a streak saved
+    if((newStats.streak||0)===0 && (stats.streak||0)>0 && !newStats.last_study_date) return;
     setStats(newStats);
     await supabase.from("profiles").update({stats:newStats,updated_at:new Date().toISOString()}).eq("id",authUser.id);
-    // Check frame unlocks based on achievements
     checkFrameUnlocks(newStats);
   };
 
@@ -725,7 +737,7 @@ export default function StudyGrove() {
   const handleLogout=async()=>{
     if(channelRef.current)supabase.removeChannel(channelRef.current);
     await supabase.auth.signOut();
-    setGroup(null);setGroupMembers([]);setMessages([]);setProfile(null);setStats({total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0});
+    setGroup(null);setGroupMembers([]);setMessages([]);setProfile(null);setStats({total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0,last_study_date:null});
   };
 
   const createGroup=async()=>{
@@ -970,6 +982,33 @@ export default function StudyGrove() {
             <div style={{fontWeight:700,fontSize:18,marginTop:12}}>Check your email</div>
             <div style={{color:T.sub,fontSize:13,marginTop:8,lineHeight:1.6}}>We sent a password reset link to <strong>{forgotEmail}</strong>. Click the link in the email to set a new password. If you didn't request this, you can safely ignore it.</div>
             <button style={{...css.btnO,marginTop:20}} onClick={()=>{setAuthScreen("login");setAuthError("");}}>← Back to login</button>
+          </div>
+        ):authScreen==="reset_password"?(
+          <div style={{textAlign:"center",padding:"10px 0"}}>
+            <div style={{fontSize:48}}>🔐</div>
+            <div style={{fontWeight:700,fontSize:18,marginTop:12,marginBottom:6}}>Set New Password</div>
+            <div style={{color:T.sub,fontSize:13,marginBottom:20}}>Choose a new password for your account</div>
+            {authError&&<div style={{color:"#ff6b6b",fontSize:13,marginBottom:10,padding:"8px 12px",background:"#ff6b6b18",borderRadius:8}}>{authError}</div>}
+            {authSuccess&&<div style={{color:"#00e676",fontSize:13,marginBottom:10,padding:"8px 12px",background:"#00e67618",borderRadius:8}}>{authSuccess}</div>}
+            <div style={{position:"relative",marginBottom:16}}>
+              <input style={{...css.input,width:"100%",boxSizing:"border-box",paddingRight:40}} placeholder="New password (min 6 chars)" type={showNewPass?"text":"password"} value={newPassword} onChange={e=>setNewPassword(e.target.value)} onKeyDown={async e=>{
+                if(e.key==="Enter"){
+                  if(newPassword.length<6){setAuthError("Password must be at least 6 characters");return;}
+                  setAuthError("");
+                  const{error}=await supabase.auth.updateUser({password:newPassword});
+                  if(error){setAuthError(error.message);}
+                  else{setAuthSuccess("✅ Password updated! Redirecting...");setNewPassword("");setTimeout(()=>{setAuthScreen("login");setAuthSuccess("");},2000);}
+                }
+              }}/>
+              <span onClick={()=>setShowNewPass(v=>!v)} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",fontSize:18,color:T.sub,userSelect:"none"}}>{showNewPass?"🙈":"👁️"}</span>
+            </div>
+            <button style={{...css.btn,width:"100%",padding:14,fontSize:15}} onClick={async()=>{
+              if(newPassword.length<6){setAuthError("Password must be at least 6 characters");return;}
+              setAuthError("");
+              const{error}=await supabase.auth.updateUser({password:newPassword});
+              if(error){setAuthError(error.message);}
+              else{setAuthSuccess("✅ Password updated! Redirecting...");setNewPassword("");setTimeout(()=>{setAuthScreen("login");setAuthSuccess("");},2000);}
+            }}>Update Password</button>
           </div>
         ):authScreen==="login"?(
           <>
@@ -1720,4 +1759,4 @@ export default function StudyGrove() {
       <style>{`@keyframes slideIn{from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1}}*{box-sizing:border-box}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${T.border};border-radius:4px}select option{background:${T.card};color:${T.text}}`}</style>
     </div>
   );
-}
+} 
