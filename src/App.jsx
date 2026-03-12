@@ -610,6 +610,13 @@ export default function StudyGrove() {
     }
 
     // Secret cheat code
+    if(friendSearch.toLowerCase()==="streakdebug"){
+      const{data}=await supabase.from("profiles").select("stats").eq("id",authUser.id).single();
+      const s=data?.stats||{};
+      setFriendSearchError(`🔍 DB streak: ${s.streak||0} | last_study_date: ${s.last_study_date||"never"} | today: ${localDateStr()}`);
+      setFriendSearch("");setFriendSearchLoading(false);return;
+    }
+
     if(friendSearch.toLowerCase()==="streakcheat"){
       const today=localDateStr();
       if(stats.last_study_date===today){
@@ -1759,4 +1766,4 @@ export default function StudyGrove() {
       <style>{`@keyframes slideIn{from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1}}*{box-sizing:border-box}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:${T.border};border-radius:4px}select option{background:${T.card};color:${T.text}}`}</style>
     </div>
   );
-} 
+}
