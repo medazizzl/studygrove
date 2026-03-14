@@ -343,12 +343,43 @@ export default function StudyGrove() {
   const dmChannelRef = useRef(null);
 
   useEffect(()=>{
+    const isOffline = !navigator.onLine;
+
     supabase.auth.getSession().then(({data:{session}})=>{
-      setAuthUser(session?.user??null);
+      if(session){
+        // Save session to localStorage for offline use
+        localStorage.setItem("sg_cached_session", JSON.stringify(session));
+        setAuthUser(session.user);
+      } else if(isOffline) {
+        // Offline and no server session — try cached session
+        try{
+          const cached = localStorage.getItem("sg_cached_session");
+          if(cached){
+            const s = JSON.parse(cached);
+            if(s?.user) setAuthUser(s.user);
+          }
+        }catch(e){}
+      } else {
+        setAuthUser(null);
+        localStorage.removeItem("sg_cached_session");
+      }
+      setAuthLoading(false);
+    }).catch(()=>{
+      // Network error — fall back to cached session
+      try{
+        const cached = localStorage.getItem("sg_cached_session");
+        if(cached){
+          const s = JSON.parse(cached);
+          if(s?.user) setAuthUser(s.user);
+        }
+      }catch(e){}
       setAuthLoading(false);
     });
+
     const {data:{subscription}}=supabase.auth.onAuthStateChange((event,session)=>{
       setAuthUser(session?.user??null);
+      if(session) localStorage.setItem("sg_cached_session", JSON.stringify(session));
+      if(event==="SIGNED_OUT") localStorage.removeItem("sg_cached_session");
       if(event==="PASSWORD_RECOVERY") setAuthScreen("reset_password");
     });
     // Also catch token in URL hash on first load
@@ -368,8 +399,26 @@ export default function StudyGrove() {
   },[authUser]);
 
   const loadProfile=async()=>{
+    const isOffline = !navigator.onLine;
+    if(isOffline){
+      // Use cached profile
+      try{
+        const cached = localStorage.getItem(`sg_cached_profile_${authUser.id}`);
+        if(cached){
+          const data = JSON.parse(cached);
+          setProfile(data);
+          if(data.stats)setStats(data.stats);
+          if(data.subjects)setSubjects(data.subjects);
+          if(data.stats)checkFrameUnlocks(data.stats);
+          if(data.avatar_url)setAvatarUrl(data.avatar_url);
+        }
+      }catch(e){}
+      return;
+    }
     const{data}=await supabase.from("profiles").select("*").eq("id",authUser.id).single();
     if(data){
+      // Cache for offline
+      localStorage.setItem(`sg_cached_profile_${authUser.id}`, JSON.stringify(data));
       setProfile(data);
       if(data.stats)setStats(data.stats);
       if(data.subjects)setSubjects(data.subjects);
@@ -401,9 +450,13 @@ export default function StudyGrove() {
 
   const saveStats=async(newStats)=>{
     if(!authUser||!newStats||typeof newStats.streak==="undefined")return;
-    // Never save a streak of 0 if we already have a streak saved
     if((newStats.streak||0)===0 && (stats.streak||0)>0 && !newStats.last_study_date) return;
     setStats(newStats);
+    try{
+      const cached=localStorage.getItem(`sg_cached_profile_${authUser.id}`);
+      if(cached){const p=JSON.parse(cached);localStorage.setItem(`sg_cached_profile_${authUser.id}`,JSON.stringify({...p,stats:newStats}));}
+    }catch(e){}
+    if(!navigator.onLine)return;
     await supabase.from("profiles").update({stats:newStats,updated_at:new Date().toISOString()}).eq("id",authUser.id);
     checkFrameUnlocks(newStats);
   };
