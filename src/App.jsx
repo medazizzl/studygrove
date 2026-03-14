@@ -877,6 +877,49 @@ export default function StudyGrove() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
 
+  // Planner
+  const [plannerEvents, setPlannerEvents] = useState(()=>{try{return JSON.parse(localStorage.getItem("sg_planner_events")||"[]");}catch{return [];}});
+  const [plannerMonth, setPlannerMonth] = useState(()=>new Date());
+  const [selectedDay, setSelectedDay] = useState(null);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [eventForm, setEventForm] = useState({title:"",date:"",time:"",type:"Exam",color:"#00e676",note:"",reminderMins:30,reminderEnabled:false});
+
+  const savePlannerEvents=(evs)=>{
+    setPlannerEvents(evs);
+    localStorage.setItem("sg_planner_events",JSON.stringify(evs));
+  };
+
+  const deleteEvent=(id)=>savePlannerEvents(plannerEvents.filter(e=>e.id!==id));
+
+  const saveEvent=()=>{
+    if(!eventForm.title.trim()||!eventForm.date)return;
+    const ev={...eventForm,id:editingEvent?.id||Date.now().toString(),created_at:new Date().toISOString()};
+    if(editingEvent){
+      savePlannerEvents(plannerEvents.map(e=>e.id===editingEvent.id?ev:e));
+    } else {
+      savePlannerEvents([...plannerEvents,ev]);
+    }
+    // Schedule reminder
+    if(ev.reminderEnabled&&ev.date&&ev.time){
+      const evTime=new Date(`${ev.date}T${ev.time}`).getTime();
+      const remTime=evTime-(ev.reminderMins*60000);
+      const msUntil=remTime-Date.now();
+      if(msUntil>0&&"Notification" in window){
+        Notification.requestPermission().then(p=>{
+          if(p==="granted"){
+            setTimeout(()=>{
+              new Notification(`⏰ Reminder: ${ev.title}`,{body:`Starting in ${ev.reminderMins} minutes!`,icon:"/icon-192.png"});
+            },msUntil);
+          }
+        });
+      }
+    }
+    setShowEventModal(false);
+    setEditingEvent(null);
+    setEventForm({title:"",date:"",time:"",type:"Exam",color:"#00e676",note:"",reminderMins:30,reminderEnabled:false});
+  };
+
   const handleDeleteAccount=async()=>{
     if(deleteConfirmText!=="DELETE")return;
     setDeleting(true);
@@ -1452,7 +1495,7 @@ export default function StudyGrove() {
       )}
 
       <div style={{display:"flex",gap:4,padding:"10px 16px",overflowX:"auto",borderBottom:`1px solid ${T.border}`,background:T.surface,position:"sticky",top:57,zIndex:99}}>
-        {[["study","⏱ Study"],["social","👥 Social"],["leaderboard","🏆 Ranks"],["stats","📊 Stats"],["achievements","🎖 Badges"],["settings","⚙️ Settings"]].map(([t,l])=>(
+        {[["study","⏱ Study"],["social","👥 Social"],["leaderboard","🏆 Ranks"],["stats","📊 Stats"],["planner","📅 Planner"],["achievements","🎖 Badges"],["settings","⚙️ Settings"]].map(([t,l])=>(
           <button key={t} style={css.tBtn(tab===t)} onClick={()=>setTab(t)}>{l}</button>
         ))}
       </div>
@@ -1855,6 +1898,188 @@ export default function StudyGrove() {
           </div>
         )}
 
+        {tab==="planner"&&(()=>{
+          const today=new Date();
+          const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
+          const year=plannerMonth.getFullYear();
+          const month=plannerMonth.getMonth();
+          const firstDay=new Date(year,month,1).getDay();
+          const daysInMonth=new Date(year,month+1,0).getDate();
+          const monthNames=["January","February","March","April","May","June","July","August","September","October","November","December"];
+          const dayNames=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+          const EVENT_TYPES=["Exam","Test","Vacation Start","Vacation End","Custom"];
+          const COLORS=["#00e676","#ff6d00","#ff1744","#2979ff","#aa00ff","#ffea00","#f06292","#00bcd4","#ffffff","#ff9100"];
+
+          const eventsOnDay=(d)=>{
+            const ds=`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+            return plannerEvents.filter(e=>e.date===ds).sort((a,b)=>a.time>b.time?1:-1);
+          };
+
+          const todayEvents=plannerEvents.filter(e=>e.date===todayStr).sort((a,b)=>a.time>b.time?1:-1);
+          const upcomingEvents=[...plannerEvents].filter(e=>e.date>=todayStr).sort((a,b)=>a.date>b.date?1:a.date<b.date?-1:a.time>b.time?1:-1).slice(0,10);
+
+          const openNewEvent=(dateStr)=>{
+            setEditingEvent(null);
+            setEventForm({title:"",date:dateStr||todayStr,time:"09:00",type:"Exam",color:"#00e676",note:"",reminderMins:30,reminderEnabled:false});
+            setShowEventModal(true);
+          };
+
+          const openEditEvent=(ev)=>{
+            setEditingEvent(ev);
+            setEventForm({...ev});
+            setShowEventModal(true);
+          };
+
+          return(
+            <div>
+              {/* Event Modal */}
+              {showEventModal&&(
+                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+                  <div style={{...css.card,width:"100%",maxWidth:420,maxHeight:"90vh",overflowY:"auto"}}>
+                    <div style={{fontWeight:800,fontSize:16,marginBottom:16}}>{editingEvent?"✏️ Edit Event":"➕ New Event"}</div>
+                    <input style={{...css.input,marginBottom:10}} placeholder="Event title *" value={eventForm.title} onChange={e=>setEventForm(p=>({...p,title:e.target.value}))}/>
+                    <div style={{display:"flex",gap:8,marginBottom:10}}>
+                      <input style={{...css.input,flex:1}} type="date" value={eventForm.date} onChange={e=>setEventForm(p=>({...p,date:e.target.value}))}/>
+                      <input style={{...css.input,flex:1}} type="time" value={eventForm.time} onChange={e=>setEventForm(p=>({...p,time:e.target.value}))}/>
+                    </div>
+                    <select style={{...css.input,marginBottom:10}} value={eventForm.type} onChange={e=>setEventForm(p=>({...p,type:e.target.value}))}>
+                      {EVENT_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <div style={{marginBottom:10}}>
+                      <div style={{fontSize:12,color:T.sub,marginBottom:6}}>Event Color</div>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {COLORS.map(c=>(
+                          <div key={c} onClick={()=>setEventForm(p=>({...p,color:c}))} style={{width:28,height:28,borderRadius:"50%",background:c,cursor:"pointer",border:eventForm.color===c?`3px solid ${T.text}`:"3px solid transparent",transition:"all 0.15s"}}/>
+                        ))}
+                      </div>
+                    </div>
+                    <textarea style={{...css.input,marginBottom:10,resize:"vertical",minHeight:70}} placeholder="Note (optional)" value={eventForm.note} onChange={e=>setEventForm(p=>({...p,note:e.target.value}))}/>
+                    <div style={{...css.card,background:T.surface,padding:12,marginBottom:12}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:eventForm.reminderEnabled?10:0}}>
+                        <div style={{fontSize:13,fontWeight:600}}>🔔 Reminder</div>
+                        <button onClick={()=>setEventForm(p=>({...p,reminderEnabled:!p.reminderEnabled}))} style={{...css.btn,padding:"4px 12px",fontSize:12,background:eventForm.reminderEnabled?T.accent:"#555",color:eventForm.reminderEnabled?"#000":"#fff"}}>{eventForm.reminderEnabled?"ON":"OFF"}</button>
+                      </div>
+                      {eventForm.reminderEnabled&&(
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}>
+                          <input style={{...css.input,width:80}} type="number" min="1" max="10080" value={eventForm.reminderMins} onChange={e=>setEventForm(p=>({...p,reminderMins:Number(e.target.value)}))}/>
+                          <span style={{fontSize:13,color:T.sub}}>minutes before</span>
+                          <div style={{display:"flex",gap:4,marginLeft:"auto"}}>
+                            {[[15,"15m"],[30,"30m"],[60,"1h"],[1440,"1d"]].map(([v,l])=>(
+                              <button key={v} onClick={()=>setEventForm(p=>({...p,reminderMins:v}))} style={{...css.btnO,padding:"2px 8px",fontSize:11,borderColor:eventForm.reminderMins===v?T.accent:T.border,color:eventForm.reminderMins===v?T.accent:T.sub}}>{l}</button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button style={{...css.btn,flex:1,padding:12}} onClick={saveEvent}>
+                        {editingEvent?"Save Changes":"Add Event"}
+                      </button>
+                      <button style={{...css.btnO,padding:12}} onClick={()=>{setShowEventModal(false);setEditingEvent(null);}}>Cancel</button>
+                      {editingEvent&&<button style={{...css.btnD,padding:12}} onClick={()=>{deleteEvent(editingEvent.id);setShowEventModal(false);setEditingEvent(null);}}>Delete</button>}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Calendar */}
+              <div style={css.card}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                  <button style={{...css.btnO,padding:"4px 12px"}} onClick={()=>setPlannerMonth(new Date(year,month-1,1))}>←</button>
+                  <div style={{fontWeight:900,fontSize:16}}>{monthNames[month]} {year}</div>
+                  <button style={{...css.btnO,padding:"4px 12px"}} onClick={()=>setPlannerMonth(new Date(year,month+1,1))}>→</button>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+                  {dayNames.map(d=><div key={d} style={{textAlign:"center",fontSize:11,color:T.sub,fontWeight:700,padding:"4px 0"}}>{d}</div>)}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+                  {Array(firstDay).fill(null).map((_,i)=><div key={`e${i}`}/>)}
+                  {Array(daysInMonth).fill(null).map((_,i)=>{
+                    const d=i+1;
+                    const ds=`${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+                    const dayEvs=eventsOnDay(d);
+                    const isToday=ds===todayStr;
+                    const isSelected=selectedDay===ds;
+                    return(
+                      <div key={d} onClick={()=>setSelectedDay(isSelected?null:ds)} style={{minHeight:44,padding:"4px 2px",borderRadius:8,cursor:"pointer",background:isSelected?`${T.accent}25`:isToday?`${T.accent}12`:"transparent",border:isToday?`1px solid ${T.accent}`:`1px solid transparent`,transition:"all 0.15s",textAlign:"center"}}>
+                        <div style={{fontSize:12,fontWeight:isToday?900:400,color:isToday?T.accent:T.text}}>{d}</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:2,justifyContent:"center",marginTop:2}}>
+                          {dayEvs.slice(0,3).map(ev=>(
+                            <div key={ev.id} style={{width:6,height:6,borderRadius:"50%",background:ev.color||T.accent}}/>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <button style={{...css.btn,width:"100%",marginTop:14,padding:10}} onClick={()=>openNewEvent(selectedDay||todayStr)}>+ Add Event</button>
+              </div>
+
+              {/* Selected day events */}
+              {selectedDay&&(()=>{
+                const dayEvs=plannerEvents.filter(e=>e.date===selectedDay).sort((a,b)=>a.time>b.time?1:-1);
+                const [y,m,d]=selectedDay.split("-");
+                return(
+                  <div style={css.card}>
+                    <div style={{fontWeight:700,marginBottom:12}}>📋 {monthNames[parseInt(m)-1]} {parseInt(d)}, {y}</div>
+                    {dayEvs.length===0&&<div style={{color:T.sub,fontSize:13}}>No events this day. <span style={{color:T.accent,cursor:"pointer"}} onClick={()=>openNewEvent(selectedDay)}>+ Add one</span></div>}
+                    {dayEvs.map(ev=>(
+                      <div key={ev.id} onClick={()=>openEditEvent(ev)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,marginBottom:8,background:T.surface,border:`1px solid ${T.border}`,cursor:"pointer",borderLeft:`4px solid ${ev.color||T.accent}`}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:700,fontSize:14}}>{ev.title}</div>
+                          <div style={{fontSize:12,color:T.sub,marginTop:2}}>{ev.type}{ev.time?` · ${ev.time}`:""}</div>
+                          {ev.note&&<div style={{fontSize:11,color:T.sub,marginTop:4,fontStyle:"italic"}}>{ev.note}</div>}
+                        </div>
+                        {ev.reminderEnabled&&<span style={{fontSize:16}}>🔔</span>}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Today's schedule */}
+              <div style={css.card}>
+                <div style={{fontWeight:700,marginBottom:12}}>📅 Today's Schedule</div>
+                {todayEvents.length===0&&<div style={{color:T.sub,fontSize:13}}>Nothing scheduled for today. <span style={{color:T.accent,cursor:"pointer"}} onClick={()=>openNewEvent(todayStr)}>+ Add event</span></div>}
+                {todayEvents.map(ev=>(
+                  <div key={ev.id} onClick={()=>openEditEvent(ev)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,marginBottom:8,background:T.surface,border:`1px solid ${T.border}`,cursor:"pointer",borderLeft:`4px solid ${ev.color||T.accent}`}}>
+                    <div style={{fontSize:20,fontWeight:900,color:ev.color||T.accent,minWidth:50,textAlign:"center"}}>{ev.time||"--:--"}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:14}}>{ev.title}</div>
+                      <div style={{fontSize:12,color:T.sub}}>{ev.type}</div>
+                      {ev.note&&<div style={{fontSize:11,color:T.sub,marginTop:2,fontStyle:"italic"}}>{ev.note}</div>}
+                    </div>
+                    {ev.reminderEnabled&&<span style={{fontSize:16}}>🔔</span>}
+                  </div>
+                ))}
+              </div>
+
+              {/* Upcoming events */}
+              <div style={css.card}>
+                <div style={{fontWeight:700,marginBottom:12}}>🔮 Upcoming Events</div>
+                {upcomingEvents.length===0&&<div style={{color:T.sub,fontSize:13}}>No upcoming events.</div>}
+                {upcomingEvents.map(ev=>{
+                  const [y,m,d]=ev.date.split("-");
+                  const isToday=ev.date===todayStr;
+                  return(
+                    <div key={ev.id} onClick={()=>openEditEvent(ev)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:10,marginBottom:8,background:T.surface,border:`1px solid ${T.border}`,cursor:"pointer",borderLeft:`4px solid ${ev.color||T.accent}`}}>
+                      <div style={{textAlign:"center",minWidth:44}}>
+                        <div style={{fontSize:18,fontWeight:900,color:ev.color||T.accent}}>{parseInt(d)}</div>
+                        <div style={{fontSize:10,color:T.sub}}>{monthNames[parseInt(m)-1].slice(0,3)}</div>
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontWeight:700,fontSize:14}}>{ev.title}</div>
+                        <div style={{fontSize:12,color:T.sub}}>{ev.type}{ev.time?` · ${ev.time}`:""}{isToday?" · Today":""}</div>
+                      </div>
+                      <div style={{width:10,height:10,borderRadius:"50%",background:ev.color||T.accent,flexShrink:0}}/>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
         {tab==="achievements"&&(
           <div>
             <div style={{...css.card,marginBottom:16}}>
@@ -2003,4 +2228,3 @@ export default function StudyGrove() {
     </div>
   );
 }
-
