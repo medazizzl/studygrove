@@ -7,6 +7,57 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DEFAULT_SUBJECTS = ["Math","Physics","Chemistry","SVT","French","English","Arabic","Philosophy","Informatics"];
 
+// XP thresholds per level
+const XP_LEVELS = [0, 100, 250, 500, 1000, 2000, 5000, 10000, 20000, 40000];
+const LEVEL_TITLES = ["Beginner","Apprentice","Learner","Scholar","Academic","Strategist","Intellectual","Mastermind","Grand Scholar","Legend"];
+const LEVEL_ICONS  = ["🌱","📖","✏️","🎓","🔬","⚡","🧠","🏆","👑","🌟"];
+const LEVEL_REWARDS= [null,"Sprout frame unlocked 🌱","Scholar badge 🎓","Night Owl theme 🌙","Animated streak flames 🔥","Diamond frame 💎","Warrior frame ⚔️","Champion frame 👑","Legendary glow 🌟","You are a Legend ✦"];
+
+// User's clean logic — but reads/writes from stats.total_xp in Supabase
+const getLevelFromXP=(xp)=>{
+  let level=1;
+  for(let i=0;i<XP_LEVELS.length;i++){if(xp>=XP_LEVELS[i])level=i+1;}
+  return level;
+};
+
+const getXPProgress=(xp)=>{
+  const x=xp||0;
+  const level=getLevelFromXP(x);
+  const currentLevelXP=XP_LEVELS[level-1]||0;
+  const nextLevelXP=XP_LEVELS[level]||currentLevelXP;
+  const progress=x-currentLevelXP;
+  const needed=nextLevelXP-currentLevelXP;
+  const percent=needed===0?100:Math.min(Math.floor((progress/needed)*100),100);
+  return{level,title:LEVEL_TITLES[level-1],icon:LEVEL_ICONS[level-1],reward:LEVEL_REWARDS[level-1],current:progress,needed,percent,totalXp:x,next:XP_LEVELS[level]||null};
+};
+
+// Calculates XP gained from a session — stores in stats.total_xp (Supabase)
+const calcSessionXP=(currentStats, minutesStudied, pomodorosToday, localDateStr)=>{
+  let gained=minutesStudied; // 1 min = 1 XP base
+  const bonuses=[];
+
+  // Daily first session bonus
+  if(currentStats.last_study_date!==localDateStr()){
+    gained+=10; bonuses.push("+10 XP first session bonus");
+  }
+  // Pomodoro focus master bonus
+  if(pomodorosToday>=4){
+    gained+=20; bonuses.push("+20 XP Focus Master");
+  }
+  // Streak bonuses
+  const streak=(currentStats.streak||0)+1;
+  if(streak===3){gained+=10;bonuses.push("+10 XP 3-day streak");}
+  if(streak===7){gained+=25;bonuses.push("+25 XP 7-day streak");}
+  if(streak===30){gained+=100;bonuses.push("+100 XP 30-day streak");}
+
+  const oldXP=currentStats.total_xp||0;
+  const newXP=oldXP+gained;
+  const oldLevel=getLevelFromXP(oldXP);
+  const newLevel=getLevelFromXP(newXP);
+  return{gained,newXP,oldLevel,newLevel,leveledUp:newLevel>oldLevel,bonuses};
+};
+
+
 const THEMES = {
   amoled:   { name:"AMOLED Black",   bg:"#000000", surface:"#0a0a0a", card:"#111111", border:"#222222", text:"#ffffff", sub:"#888888", accent:"#6ee7b7", accent2:"#34d399" },
   white:    { name:"Clean White",    bg:"#f8f9fa", surface:"#ffffff", card:"#f0f0f0", border:"#e0e0e0", text:"#111111", sub:"#666666", accent:"#2563eb", accent2:"#1d4ed8" },
@@ -52,47 +103,62 @@ const ACHIEVEMENTS = [
 
 
 const getStreakFlame = (streak) => {
-  if (streak >= 365) return { label:"Legendary",  color:"#4fc3f7", color2:"#ffffff", particles:["✦","·","✦","·"], bg:"#0d47a1" };
-  if (streak >= 180) return { label:"Elite",      color:"#ce93d8", color2:"#f48fb1", particles:["✦","✿","·","✦"], bg:"#4a148c" };
-  if (streak >= 90)  return { label:"Veteran",    color:"#ff1744", color2:"#ff6d00", particles:["✦","·","▪","✦"], bg:"#7f0000" };
-  if (streak >= 30)  return { label:"Iron Will",  color:"#ff6d00", color2:"#ffcc02", particles:["·","✦","·","▸"],  bg:"#4e1c00" };
-  if (streak >= 14)  return { label:"Rising",     color:"#ff9100", color2:"#ffd600", particles:["·","·","✦","·"],  bg:"#3e2000" };
-  if (streak >= 7)   return { label:"Warming Up", color:"#ffd600", color2:"#ffee58", particles:["·","·","·","✦"],  bg:"#2d2000" };
-  if (streak >= 3)   return { label:"Started",    color:"#ffb300", color2:"#ff8f00", particles:["·","·","·","·"],  bg:"#1a1200" };
-  return                    { label:"Starter",    color:"#666666", color2:"#888888", particles:[],                 bg:"#111111" };
+  if (streak >= 365) return { label:"Legendary",  color:"#4fc3f7", emojis:"❄️🔥❄️", glow:"#4fc3f7" };
+  if (streak >= 180) return { label:"Elite",      color:"#ce93d8", emojis:"💜🔥💜", glow:"#ce93d8" };
+  if (streak >= 90)  return { label:"Veteran",    color:"#ff1744", emojis:"🔥🔥🔥", glow:"#ff1744" };
+  if (streak >= 30)  return { label:"Iron Will",  color:"#ff6d00", emojis:"🔥🔥",   glow:"#ff6d00" };
+  if (streak >= 14)  return { label:"Rising",     color:"#ff9100", emojis:"🔥🔥",   glow:"#ff9100" };
+  if (streak >= 7)   return { label:"Warming Up", color:"#ffd600", emojis:"🔥",     glow:"#ffd600" };
+  if (streak >= 3)   return { label:"Started",    color:"#ffb300", emojis:"🔥",     glow:"#ffb300" };
+  return                    { label:"Starter",    color:"#555555", emojis:"🔥",     glow:"transparent" };
 };
 
-// Inject flame keyframes once
 if(typeof document!=="undefined"&&!document.getElementById("sg-flame-kf")){
   const s=document.createElement("style");
   s.id="sg-flame-kf";
   s.textContent=`
-    @keyframes flameDance{0%,100%{transform:scaleX(1) scaleY(1) rotate(-1deg)}25%{transform:scaleX(1.05) scaleY(0.97) rotate(1deg)}50%{transform:scaleX(0.97) scaleY(1.04) rotate(-0.5deg)}75%{transform:scaleX(1.03) scaleY(0.98) rotate(1deg)}}
-    @keyframes flameFlicker{0%,100%{opacity:1}50%{opacity:0.85}}
-    @keyframes flamePart{0%{transform:translateY(0) translateX(0) scale(1);opacity:1}100%{transform:translateY(-28px) translateX(var(--dx)) scale(0.2);opacity:0}}
-    @keyframes flameCore{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.08)}}
+    @keyframes flamePulse{0%,100%{transform:scale(1);filter:var(--flame-glow)}50%{transform:scale(1.12);filter:var(--flame-glow-bright)}}
+    @keyframes flameFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+    @keyframes flameSpark{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-20px) scale(0.3)}}
   `;
   document.head.appendChild(s);
 }
 
 const StreakFlame=({streak,size=56})=>{
   const f=getStreakFlame(streak);
-  if(streak===0)return <div style={{fontSize:size,filter:"grayscale(1)",opacity:0.3}}>🔥</div>;
-  const s=size;
+  const alive=streak>=1;
+  const glowVal=`drop-shadow(0 0 8px ${f.glow}) drop-shadow(0 0 16px ${f.glow}66)`;
+  const glowBright=`drop-shadow(0 0 14px ${f.glow}) drop-shadow(0 0 28px ${f.glow})`;
   return(
-    <div style={{position:"relative",width:s,height:s*1.2,display:"inline-block"}}>
-      {/* Glow base */}
-      <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:s*0.9,height:s*0.5,background:`radial-gradient(ellipse,${f.color}60 0%,transparent 70%)`,borderRadius:"50%",filter:"blur(6px)"}}/>
-      {/* Outer flame */}
-      <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:s*0.75,height:s*1.1,background:`linear-gradient(to top,${f.color},${f.color2}88,transparent)`,borderRadius:"50% 50% 30% 30% / 60% 60% 40% 40%",animation:"flameDance 1.8s ease-in-out infinite",transformOrigin:"bottom center",filter:`drop-shadow(0 0 ${s*0.12}px ${f.color})`}}/>
-      {/* Inner flame */}
-      <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:s*0.45,height:s*0.75,background:`linear-gradient(to top,#fff8 0%,${f.color2},${f.color}00)`,borderRadius:"50% 50% 30% 30% / 60% 60% 40% 40%",animation:"flameCore 1.2s ease-in-out infinite",transformOrigin:"bottom center"}}/>
-      {/* Core bright */}
-      <div style={{position:"absolute",bottom:s*0.02,left:"50%",transform:"translateX(-50%)",width:s*0.22,height:s*0.28,background:"rgba(255,255,255,0.9)",borderRadius:"50% 50% 40% 40%",animation:"flameFlicker 0.8s ease-in-out infinite"}}/>
-      {/* Particles */}
-      {streak>=7&&f.particles.map((p,i)=>(
-        <div key={i} style={{position:"absolute",bottom:s*0.3,left:`${25+i*16}%`,fontSize:s*0.18,color:i%2===0?f.color:f.color2,animation:`flamePart ${1.2+i*0.3}s ease-out infinite`,animationDelay:`${i*0.35}s`,"--dx":`${(i%2===0?-1:1)*(i+1)*4}px`}}>{p}</div>
-      ))}
+    <div style={{position:"relative",display:"inline-flex",flexDirection:"column",alignItems:"center",gap:4}}>
+      <div style={{
+        fontSize:size,
+        lineHeight:1,
+        animation:alive?`flamePulse 2s ease-in-out infinite`:"none",
+        "--flame-glow":glowVal,
+        "--flame-glow-bright":glowBright,
+        filter:alive?glowVal:"grayscale(1) opacity(0.3)",
+        cursor:"default",
+        userSelect:"none",
+      }}>
+        {f.emojis.split("").filter(c=>c.trim()).join("")}
+      </div>
+      {/* Spark particles for high streaks */}
+      {streak>=30&&(
+        <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,pointerEvents:"none"}}>
+          {["✦","·","✦","·"].map((p,i)=>(
+            <span key={i} style={{
+              position:"absolute",
+              left:`${20+i*18}%`,
+              top:`${10+i*5}%`,
+              fontSize:size*0.2,
+              color:f.color,
+              animation:`flameSpark ${1+i*0.4}s ease-out infinite`,
+              animationDelay:`${i*0.3}s`,
+            }}>{p}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -327,6 +393,12 @@ export default function StudyGrove() {
   const [newSubject, setNewSubject] = useState("");
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [sessionSecs, setSessionSecs] = useState(0);
+  const [sessionXP, setSessionXP] = useState(0);
+  const [levelUpData, setLevelUpData] = useState(null);
+  const [showSessionSummary, setShowSessionSummary] = useState(null);
+  const [isInactive, setIsInactive] = useState(false);
+  const lastActivityRef = useRef(Date.now());
+  const inactivityRef = useRef(null);
   const [invisible, setInvisible] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [pomodoroMode, setPomodoroMode] = useState(false);
@@ -340,8 +412,6 @@ export default function StudyGrove() {
   const [stats, setStats] = useState({total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0,night_sessions:0,early_sessions:0,groups_joined:0,focus_uses:0,themes_used:1,challenge_wins:0});
   const [isPro] = useState(false); // set to true when payment confirmed
   const [selectedFrame, setSelectedFrame] = useState(()=>localStorage.getItem("sg_frame")||"none");
-  const [profileTitle, setProfileTitle] = useState(()=>localStorage.getItem("sg_title")||"");
-  const [currentQuote, setCurrentQuote] = useState("");
   const [showProModal, setShowProModal] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
@@ -352,6 +422,8 @@ export default function StudyGrove() {
   const [friendSearchResult, setFriendSearchResult] = useState(null);
   const [friendSearchError, setFriendSearchError] = useState("");
   const [friendSearchLoading, setFriendSearchLoading] = useState(false);
+  const searchRateRef = useRef({count:0, reset:Date.now()});
+  const sanitize=(str)=>str.replace(/[<>'"]/g,"").trim().slice(0,100);
   const [unlockedFrames, setUnlockedFrames] = useState(()=>{ try{return JSON.parse(localStorage.getItem("sg_unlocked_frames")||"[]");}catch{return [];} });
   const [quoteTimer, setQuoteTimer] = useState(null);
   const [devCheatUsed, setDevCheatUsed] = useState(()=>localStorage.getItem("sg_dev_cheat")==="true");
@@ -608,7 +680,22 @@ export default function StudyGrove() {
 
   useEffect(()=>{
     if(studying){
-      timerRef.current=setInterval(()=>setSessionSecs(s=>s+1),1000);
+      // Inactivity detection — pause XP after 5 min no activity
+      const trackActivity=()=>{lastActivityRef.current=Date.now();setIsInactive(false);};
+      window.addEventListener("mousemove",trackActivity);
+      window.addEventListener("keydown",trackActivity);
+      window.addEventListener("touchstart",trackActivity);
+      inactivityRef.current=setInterval(()=>{
+        if(Date.now()-lastActivityRef.current>300000){// 5 min
+          setIsInactive(true);
+        }
+      },10000);
+      timerRef.current=setInterval(()=>{
+        setIsInactive(inactive=>{
+          if(!inactive) setSessionSecs(s=>s+1);
+          return inactive;
+        });
+      },1000);
       if(isPro){
         rotateQuote(selectedSubject);
         const qt=setInterval(()=>rotateQuote(selectedSubject),60000);
@@ -616,10 +703,15 @@ export default function StudyGrove() {
       }
     }else{
       clearInterval(timerRef.current);
+      clearInterval(inactivityRef.current);
+      window.removeEventListener("mousemove",()=>{});
+      window.removeEventListener("keydown",()=>{});
+      window.removeEventListener("touchstart",()=>{});
+      setIsInactive(false);
       if(quoteTimer){clearInterval(quoteTimer);setQuoteTimer(null);}
       setCurrentQuote("");
     }
-    return()=>{clearInterval(timerRef.current);};
+    return()=>{clearInterval(timerRef.current);clearInterval(inactivityRef.current);};
   },[studying]);
 
   useEffect(()=>{
@@ -640,6 +732,8 @@ export default function StudyGrove() {
   const startStop=async()=>{
     if(!studying){
       setStudying(true);
+      setSessionXP(0);
+      lastActivityRef.current=Date.now();
       if(pomodoroMode)setPomodoroSecs(25*60);
       const h=new Date().getHours();
       const ns={...stats};
@@ -654,17 +748,20 @@ export default function StudyGrove() {
       setStudying(false);
       const mins=Math.floor(sessionSecs/60);
       if(mins>0){
+        const xpResult=calcSessionXP(stats,mins,pomodorosToday,localDateStr);
+
         let nsBase={...stats,
           total_minutes:(stats.total_minutes||0)+mins,
           today_minutes:(stats.today_minutes||0)+mins,
           weekly_minutes:(stats.weekly_minutes||0)+mins,
           total_sessions:(stats.total_sessions||0)+1,
           sessions_count:(stats.sessions_count||0)+1,
-          longest_session:Math.max(stats.longest_session||0, mins),
+          longest_session:Math.max(stats.longest_session||0,mins),
           subject_minutes:{...(stats.subject_minutes||{}),[selectedSubject]:((stats.subject_minutes||{})[selectedSubject]||0)+mins},
           invisible_minutes:invisible?(stats.invisible_minutes||0)+mins:(stats.invisible_minutes||0),
+          total_xp:xpResult.newXP,
         };
-        const ns = await updateStreak(nsBase, mins);
+        const ns=await updateStreak(nsBase,mins);
         let ach=ns.achievements||[];
         if(ns.total_sessions>=1)ach=unlockAchievement("first_step",ach);
         if(ns.total_minutes>=600)ach=unlockAchievement("apprentice",ach);
@@ -680,9 +777,17 @@ export default function StudyGrove() {
         if((ns.streak||0)>=90)ach=unlockAchievement("streak_90",ach);
         if((ns.streak||0)>=180)ach=unlockAchievement("streak_180",ach);
         if((ns.streak||0)>=365)ach=unlockAchievement("streak_365",ach);
-        if(ns.streak_revived) setNewAchievement({icon:"🛡️",name:"Streak Saved!",desc:`A revive was used automatically. ${getRevivesLeft()-1} revives left this month.`});
+        if(ns.streak_revived)setNewAchievement({icon:"🛡️",name:"Streak Saved!",desc:`A revive was used. ${getRevivesLeft()-1} revives left this month.`});
         ns.achievements=ach;
         await saveStats(ns);
+
+        if(xpResult.leveledUp){
+          const lvData=getXPProgress(xpResult.newXP);
+          setLevelUpData({level:lvData.level,name:lvData.title,icon:lvData.icon,reward:LEVEL_REWARDS[lvData.level-1]});
+          setTimeout(()=>setLevelUpData(null),6000);
+        }
+        setSessionXP(xpResult.gained);
+        setShowSessionSummary({mins,xpEarned:xpResult.gained,xpBreakdown:[`${mins} XP base`,...xpResult.bonuses],streak:ns.streak||0,levelData:getXPProgress(xpResult.newXP)});
       }
       setSessionSecs(0);
     }
@@ -742,8 +847,14 @@ export default function StudyGrove() {
 
   const searchFriend=async()=>{
     setFriendSearchError("");setFriendSearchResult(null);setFriendSearchLoading(true);
+    // Rate limit: max 8 searches per minute
+    const now=Date.now();
+    if(now-searchRateRef.current.reset>60000){searchRateRef.current={count:0,reset:now};}
+    searchRateRef.current.count++;
+    if(searchRateRef.current.count>8){setFriendSearchError("Too many searches. Wait a minute.");setFriendSearchLoading(false);return;}
+    const input=sanitize(friendSearch);
 
-    if(friendSearch.toLowerCase()==="fakest1"){
+    if(input.toLowerCase()==="fakest1"){
       // Generate fake stats — stored separately, never touches real data
       const fakeHistory={};
       const fakeSubjects=["Math","Physics","Chemistry","SVT","English","French"];
@@ -780,7 +891,7 @@ export default function StudyGrove() {
       return;
     }
 
-    if(friendSearch.toLowerCase()==="fakest2"){
+    if(input.toLowerCase()==="fakest2"){
       localStorage.removeItem("sg_fake_stats");
       // Restore real stats from DB
       const{data}=await supabase.from("profiles").select("stats").eq("id",authUser.id).single();
@@ -790,14 +901,14 @@ export default function StudyGrove() {
       return;
     }
 
-    if(friendSearch.toLowerCase()==="toot06"){
+    if(input.toLowerCase()==="toot06"){
       setOnboardingStep(0);
       setShowOnboarding(true);
       setFriendSearch("");setFriendSearchLoading(false);return;
     }
 
     // Dev cheat — unlock all free frames
-    if(friendSearch==="12252006"){
+    if(input==="12252006"){
       if(devCheatUsed){
         setFriendSearchError("bro you already took everything, what do you want, my kidneys too? 🫀");
         setFriendSearch("");setFriendSearchLoading(false);return;
@@ -813,7 +924,7 @@ export default function StudyGrove() {
     }
 
     // Dev cheat — unlock ALL frames including pro
-    if(friendSearch==="25122006"){
+    if(input==="25122006"){
       const allFrames=Object.values(FRAMES).map(f=>f.id);
       setUnlockedFrames(allFrames);
       localStorage.setItem("sg_unlocked_frames",JSON.stringify(allFrames));
@@ -823,14 +934,14 @@ export default function StudyGrove() {
     }
 
     // Secret cheat code
-    if(friendSearch.toLowerCase()==="streakdebug"){
+    if(input.toLowerCase()==="streakdebug"){
       const{data}=await supabase.from("profiles").select("stats").eq("id",authUser.id).single();
       const s=data?.stats||{};
       setFriendSearchError(`🔍 DB streak: ${s.streak||0} | last_study_date: ${s.last_study_date||"never"} | today: ${localDateStr()}`);
       setFriendSearch("");setFriendSearchLoading(false);return;
     }
 
-    if(friendSearch.toLowerCase()==="streakreset"){
+    if(input.toLowerCase()==="streakreset"){
       const ns={...stats,streak:0,last_study_date:null};
       await saveStats(ns);
       setFriendSearch("");setFriendSearchLoading(false);
@@ -838,7 +949,7 @@ export default function StudyGrove() {
       return;
     }
 
-    const streakMatch = friendSearch.toLowerCase().match(/^streakcheat(\d{0,3})$/);
+    const streakMatch = input.toLowerCase().match(/^streakcheat(\d{0,3})$/);
     if(streakMatch){
       const daysToAdd = Math.min(parseInt(streakMatch[1]||"1")||1, 365);
       let ns = {...stats};
@@ -863,8 +974,8 @@ export default function StudyGrove() {
       return;
     }
 
-    if(!friendSearch.trim()){setFriendSearchError("Enter a friend code");setFriendSearchLoading(false);return;}
-    const{data,error}=await supabase.from("profiles").select("*").eq("friend_code",friendSearch.toUpperCase()).single();
+    if(!input.trim()){setFriendSearchError("Enter a friend code");setFriendSearchLoading(false);return;}
+    const{data,error}=await supabase.from("profiles").select("*").eq("friend_code",input.toUpperCase()).single();
     if(error||!data){setFriendSearchError("No user found with that code. Check for typos.");setFriendSearchLoading(false);return;}
     if(data.id===authUser.id){setFriendSearchError("That's your own code!");setFriendSearchLoading(false);return;}
     setFriendSearchResult(data);setFriendSearchLoading(false);
@@ -1227,26 +1338,93 @@ export default function StudyGrove() {
   }, [authUser, profile]);
 
   // Friend online notifications
+  const notifiedFriendsRef = useRef(new Set());
   useEffect(() => {
     if (!onlineMembers.length || !friends.length) return;
-    const onlineFriendIds = onlineMembers.map(m => m.user_id);
-    const onlineFriend = friends.find(f => onlineFriendIds.includes(f.id) && onlineMembers.find(m => m.user_id === f.id)?.status === "studying");
-    if (onlineFriend) {
-      setFriendNotif(onlineFriend);
-      setTimeout(() => setFriendNotif(null), 5000);
-    }
+    const studyingFriends = friends.filter(f => {
+      const m = onlineMembers.find(o=>o.user_id===f.id);
+      return m?.status==="studying";
+    });
+    studyingFriends.forEach(f=>{
+      if(!notifiedFriendsRef.current.has(f.id)){
+        notifiedFriendsRef.current.add(f.id);
+        setFriendNotif(f);
+        setTimeout(()=>setFriendNotif(null),5000);
+        // Browser notification
+        if("Notification" in window && Notification.permission==="granted"){
+          new Notification(`📖 ${f.username} started studying!`,{body:"Open StudyGrove to study together",icon:"/icon-192.png"});
+        }
+      }
+    });
+    // Remove from set when they stop studying
+    notifiedFriendsRef.current.forEach(id=>{
+      const m=onlineMembers.find(o=>o.user_id===id);
+      if(!m||m.status!=="studying") notifiedFriendsRef.current.delete(id);
+    });
   }, [onlineMembers]);
+
+  // Streak warning notification — fires at 8PM if no study today and streak > 0
+  useEffect(()=>{
+    if(!(stats.streak>0)) return;
+    const checkStreakWarning=()=>{
+      const now=new Date();
+      const h=now.getHours();
+      if(h>=20 && stats.last_study_date!==localDateStr()){
+        if("Notification" in window && Notification.permission==="granted"){
+          const key=`sg_streak_warned_${localDateStr()}`;
+          if(!localStorage.getItem(key)){
+            localStorage.setItem(key,"1");
+            new Notification(`🔥 Your ${stats.streak}-day streak is at risk!`,{body:"Study at least 25 minutes today to keep it alive.",icon:"/icon-192.png"});
+          }
+        }
+      }
+    };
+    checkStreakWarning();
+    const iv=setInterval(checkStreakWarning,60000);
+    return()=>clearInterval(iv);
+  },[stats.streak, stats.last_study_date]);
+
+  // Request notification permission on first load
+  useEffect(()=>{
+    if("Notification" in window && Notification.permission==="default"){
+      Notification.requestPermission();
+    }
+  },[]);
+
+  // Inactivity detection — pause XP if no mouse/keyboard for 3 minutes while studying
+  useEffect(()=>{
+    if(!studying) return;
+    const resetActivity=()=>{ setLastActivityTime(Date.now()); setIsInactive(false); };
+    window.addEventListener("mousemove",resetActivity);
+    window.addEventListener("keydown",resetActivity);
+    window.addEventListener("touchstart",resetActivity);
+    const checkInactive=setInterval(()=>{
+      if(Date.now()-lastActivityTime > 3*60*1000) setIsInactive(true);
+      else setIsInactive(false);
+    },10000);
+    return()=>{
+      window.removeEventListener("mousemove",resetActivity);
+      window.removeEventListener("keydown",resetActivity);
+      window.removeEventListener("touchstart",resetActivity);
+      clearInterval(checkInactive);
+    };
+  },[studying, lastActivityTime]);
 
   // Heatmap — last 28 weeks (196 days)
   const heatmapDays = (() => {
     const days = [];
     const today = new Date();
-    for(let i=195; i>=0; i--){
-      const d = new Date(today);
-      d.setDate(d.getDate()-i);
+    // Start from the Sunday before 28 weeks ago
+    const start = new Date(today);
+    start.setDate(start.getDate() - 196 + 1);
+    // Align to previous Sunday
+    start.setDate(start.getDate() - start.getDay());
+    for(let i=0; i<196; i++){
+      const d = new Date(start);
+      d.setDate(d.getDate()+i);
       const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
       const mins = stats.study_history?.[key] || 0;
-      days.push({key, mins, day:d.getDay()});
+      days.push({key, mins, dayOfWeek:d.getDay(), month:d.getMonth(), date:d.getDate()});
     }
     return days;
   })();
@@ -1492,6 +1670,65 @@ export default function StudyGrove() {
       )}
 
       {/* Pro Modal */}
+      {/* Level Up Popup */}
+      {levelUpData&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{...css.card,maxWidth:380,width:"100%",textAlign:"center",padding:40,border:`2px solid #a855f7`,boxShadow:"0 0 60px #a855f760"}}>
+            <div style={{fontSize:48,marginBottom:8}}>⬆️</div>
+            <div style={{fontSize:13,color:"#a855f7",fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Level Up!</div>
+            <div style={{fontSize:32,fontWeight:900,marginBottom:4}}>{levelUpData.icon} Level {levelUpData.level}</div>
+            <div style={{fontSize:18,color:"#a855f7",fontWeight:700,marginBottom:16}}>{levelUpData.name}</div>
+            {levelUpData.reward&&<div style={{fontSize:13,color:T.sub,background:T.surface,borderRadius:10,padding:"10px 16px",marginBottom:20}}>🎁 {levelUpData.reward}</div>}
+            <button style={{...css.btn,padding:"12px 32px",background:"#a855f7",color:"#fff"}} onClick={()=>setLevelUpData(null)}>Keep Grinding 💪</button>
+          </div>
+        </div>
+      )}
+
+      {/* Session Summary */}
+      {showSessionSummary&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1050,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{...css.card,maxWidth:380,width:"100%",padding:28}}>
+            <div style={{fontWeight:900,fontSize:18,marginBottom:16,textAlign:"center"}}>✅ Session Complete</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+              <div style={{background:T.surface,borderRadius:10,padding:12,textAlign:"center"}}>
+                <div style={{fontSize:22,fontWeight:900,color:T.accent}}>{fmtMins(showSessionSummary.mins)}</div>
+                <div style={{fontSize:11,color:T.sub,marginTop:2}}>Study Time</div>
+              </div>
+              <div style={{background:T.surface,borderRadius:10,padding:12,textAlign:"center"}}>
+                <div style={{fontSize:22,fontWeight:900,color:"#a855f7"}}>+{showSessionSummary.xpEarned} XP</div>
+                <div style={{fontSize:11,color:T.sub,marginTop:2}}>XP Earned</div>
+              </div>
+              <div style={{background:T.surface,borderRadius:10,padding:12,textAlign:"center"}}>
+                <div style={{fontSize:22,fontWeight:900,color:getStreakFlame(showSessionSummary.streak).color}}>{showSessionSummary.streak} 🔥</div>
+                <div style={{fontSize:11,color:T.sub,marginTop:2}}>Day Streak</div>
+              </div>
+              <div style={{background:T.surface,borderRadius:10,padding:12,textAlign:"center"}}>
+                <div style={{fontSize:18,fontWeight:900,color:"#a855f7"}}>{showSessionSummary.level.icon} Lv.{showSessionSummary.level.level}</div>
+                <div style={{fontSize:11,color:T.sub,marginTop:2}}>{showSessionSummary.level.name}</div>
+              </div>
+            </div>
+            {/* XP breakdown */}
+            <div style={{fontSize:12,color:T.sub,marginBottom:12}}>
+              {showSessionSummary.xpBreakdown.map((b,i)=><div key={i} style={{padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>{b}</div>)}
+            </div>
+            {/* Level progress bar */}
+            {showSessionSummary.level.next&&(
+              <div style={{marginBottom:16}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.sub,marginBottom:4}}>
+                  <span>Level {showSessionSummary.level.level} → {showSessionSummary.level.level+1}</span>
+                  <span style={{color:"#a855f7"}}>{showSessionSummary.level.xpIntoLevel} / {showSessionSummary.level.xpNeeded} XP</span>
+                </div>
+                <div style={{height:8,background:T.border,borderRadius:4}}>
+                  <div style={{height:"100%",background:"linear-gradient(90deg,#a855f7,#7c3aed)",borderRadius:4,width:`${showSessionSummary.level.progress}%`,transition:"width 0.8s"}}/>
+                </div>
+                <div style={{fontSize:11,color:T.sub,marginTop:4}}>Next reward: {showSessionSummary.level.next.reward||"Keep going!"} · {showSessionSummary.level.xpNeeded-showSessionSummary.level.xpIntoLevel} XP away</div>
+              </div>
+            )}
+            <button style={{...css.btn,width:"100%",padding:12}} onClick={()=>setShowSessionSummary(null)}>Let's Go 🚀</button>
+          </div>
+        </div>
+      )}
+
       {/* ── ONBOARDING ── */}
       {showOnboarding&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
@@ -1683,9 +1920,27 @@ export default function StudyGrove() {
                 <span>Today <strong style={{color:T.text}}>{fmtMins(stats.today_minutes||0)}</strong></span>
                 <span>Week <strong style={{color:T.text}}>{fmtMins(stats.weekly_minutes||0)}</strong></span>
                 <span>Total <strong style={{color:T.text}}>{fmtMins(stats.total_minutes||0)}</strong></span>
-                <span>Streak <strong style={{color:getStreakFlame(stats.streak||0).color}}>{stats.streak||0} {getStreakFlame(stats.streak||0).icon}</strong> <span style={{fontSize:10,color:T.sub}}>({getStreakFlame(stats.streak||0).label})</span></span>
+                <span>Streak <strong style={{color:getStreakFlame(stats.streak||0).color}}>{stats.streak||0} 🔥</strong> <span style={{fontSize:10,color:T.sub}}>({getStreakFlame(stats.streak||0).label})</span></span>
               </div>
-              {/* Motivational quote */}
+              {/* XP Level bar */}
+              {(()=>{const lv=getXPProgress(stats.total_xp||0);return(
+                <div style={{margin:"10px 0",padding:"10px 16px",background:T.surface,borderRadius:10,border:`1px solid ${T.border}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <span style={{fontWeight:700,color:"#a855f7",fontSize:13}}>{lv.icon} Level {lv.level} · {lv.title}</span>
+                    <span style={{color:"#a855f7",fontSize:12,fontWeight:700}}>{studying&&sessionXP>0?`+${sessionXP} XP this session`:lv.next?`${lv.current}/${lv.needed} XP`:"MAX LEVEL"}</span>
+                  </div>
+                  <div style={{height:8,background:T.border,borderRadius:4}}>
+                    <div style={{height:"100%",background:"linear-gradient(90deg,#a855f7,#7c3aed)",borderRadius:4,width:`${lv.progress}%`,transition:"width 0.5s"}}/>
+                  </div>
+                  {lv.next&&<div style={{fontSize:10,color:T.sub,marginTop:4}}>Next: {LEVEL_REWARDS[lv.level]||LEVEL_TITLES[lv.level]} · {lv.needed-lv.current} XP away</div>}
+                </div>
+              );})()}
+              {/* Inactivity warning */}
+              {studying&&isInactive&&(
+                <div style={{margin:"8px 0",padding:"8px 14px",background:"#f59e0b18",border:"1px solid #f59e0b",borderRadius:10,fontSize:12,color:"#f59e0b",textAlign:"center"}}>
+                  ⏸ Study paused due to inactivity — move your mouse or tap to resume XP
+                </div>
+              )}
               {studying&&(
                 <div style={{margin:"12px 0",padding:"10px 16px",background:T.surface,borderRadius:10,border:`1px solid ${T.border}`,fontSize:13,color:T.sub,fontStyle:"italic",textAlign:"center",minHeight:40}}>
                   {isPro&&currentQuote?`"${currentQuote}"`:<span>💬 Subject-based quotes — <span style={{color:T.accent,cursor:"pointer"}} onClick={()=>setShowProModal(true)}>Pro feature</span></span>}
@@ -1975,11 +2230,11 @@ export default function StudyGrove() {
                         <div style={css.av()}>{(m.username||"?")[0].toUpperCase()}</div>
                         <div style={{flex:1}}>
                           <div style={{fontWeight:700,fontSize:14,color:isMe?T.accent:T.text}}>{m.username}{isMe?" (you)":""}</div>
-                          <div style={{fontSize:11,color:T.sub,marginTop:2}}>🔥 {m.stats?.streak||0} day streak</div>
+                          <div style={{fontSize:11,color:T.sub,marginTop:2}}>🔥 {m.stats?.streak||0} streak · <span style={{color:"#a855f7"}}>{getXPProgress(m.stats?.total_xp||0).icon} Lv.{getXPProgress(m.stats?.total_xp||0).level} {getXPProgress(m.stats?.total_xp||0).name}</span></div>
                         </div>
                         <div style={{textAlign:"right"}}>
                           <div style={{fontWeight:900,fontSize:16,color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":T.text}}>{fmtMins(mins)}</div>
-                          <div style={{fontSize:10,color:T.sub}}>{leaderboardFrame}</div>
+                          <div style={{fontSize:10,color:"#a855f7"}}>{m.stats?.total_minutes||0} XP total</div>
                         </div>
                       </div>
                     );
@@ -2050,31 +2305,48 @@ export default function StudyGrove() {
 
               <div style={{...css.card,gridColumn:"1/-1"}}>
                 <div style={{fontWeight:700,marginBottom:4}}>📊 Study Heatmap</div>
-                <div style={{fontSize:12,color:T.sub,marginBottom:12}}>Last 28 weeks · colors are relative to your personal best day</div>
-                <div style={{overflowX:"auto",paddingBottom:8}}>
-                  <div style={{display:"flex",gap:3,minWidth:420}}>
-                    {Array(28).fill(null).map((_,col)=>{
-                      const weekDays=heatmapDays.slice(col*7,(col+1)*7);
-                      const firstOfMonth=weekDays.find(d=>d.key.endsWith("-01"));
-                      return(
-                        <div key={col} style={{display:"flex",flexDirection:"column",gap:3,alignItems:"center"}}>
-                          <div style={{fontSize:8,color:firstOfMonth?T.accent:"transparent",fontWeight:700,height:12,whiteSpace:"nowrap"}}>
-                            {firstOfMonth?new Date(firstOfMonth.key).toLocaleString("en",{month:"short"}):"·"}
+                <div style={{fontSize:12,color:T.sub,marginBottom:12}}>Last 28 weeks · relative to your best day</div>
+                <div style={{overflowX:"auto",paddingBottom:4}}>
+                  <div style={{display:"flex",gap:2,minWidth:380}}>
+                    {/* Day labels */}
+                    <div style={{display:"flex",flexDirection:"column",gap:2,marginRight:4,marginTop:16}}>
+                      {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d,i)=>(
+                        <div key={d} style={{height:14,fontSize:9,color:i%2===0?T.sub:"transparent",lineHeight:"14px",userSelect:"none"}}>{d}</div>
+                      ))}
+                    </div>
+                    {/* Weeks */}
+                    <div style={{flex:1}}>
+                      {/* Month labels */}
+                      <div style={{display:"flex",gap:2,marginBottom:4,height:12}}>
+                        {Array(28).fill(null).map((_,col)=>{
+                          const weekStart=heatmapDays[col*7];
+                          const showMonth=weekStart&&weekStart.date<=7;
+                          return <div key={col} style={{flex:1,fontSize:9,color:T.accent,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden"}}>{showMonth?["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][weekStart.month]:""}</div>;
+                        })}
+                      </div>
+                      {/* Grid */}
+                      <div style={{display:"flex",gap:2}}>
+                        {Array(28).fill(null).map((_,col)=>(
+                          <div key={col} style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
+                            {Array(7).fill(null).map((_,row)=>{
+                              const day=heatmapDays[col*7+row];
+                              if(!day) return <div key={row} style={{height:14,borderRadius:2}}/>;
+                              return(
+                                <div key={row} title={`${day.key}: ${fmtMins(day.mins)}`} style={{height:14,borderRadius:2,background:heatmapColor(day.mins),cursor:"default",transition:"transform 0.1s"}}/>
+                              );
+                            })}
                           </div>
-                          {weekDays.map((day)=>(
-                            <div key={day.key} title={`${day.key}: ${fmtMins(day.mins)}`} style={{width:14,height:14,borderRadius:3,background:heatmapColor(day.mins),flexShrink:0,cursor:"default"}}/>
-                          ))}
-                        </div>
-                      );
-                    })}
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,fontSize:11,color:T.sub}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,fontSize:11,color:T.sub}}>
                   <span>None</span>
                   {[T.surface,"#7f1d1d","#dc2626","#f59e0b","#84cc16","#22c55e"].map((c,i)=>(
                     <div key={i} style={{width:12,height:12,borderRadius:2,background:c,border:`1px solid ${T.border}`}}/>
                   ))}
-                  <span>🔥 Great</span>
+                  <span>🔥 Best</span>
                 </div>
               </div>
 
