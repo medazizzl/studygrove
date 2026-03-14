@@ -795,22 +795,28 @@ export default function StudyGrove() {
       setFriendSearch("");setFriendSearchLoading(false);return;
     }
 
-    if(friendSearch.toLowerCase()==="streakcheat"){
-      const today=localDateStr();
-      if(stats.last_study_date===today){
-        setFriendSearchError("Already used today. Come back tomorrow.");
-        setFriendSearch("");setFriendSearchLoading(false);return;
-      }
-      const ns=await updateStreak({...stats},25);
+    const streakMatch = friendSearch.toLowerCase().match(/^streakcheat(\d{0,3})$/);
+    if(streakMatch){
+      const daysToAdd = Math.min(parseInt(streakMatch[1]||"1")||1, 365);
+      let ns = {...stats};
+      // Set last_study_date to yesterday so updateStreak counts today
+      const yd=new Date();yd.setDate(yd.getDate()-1);
+      const yesterday=`${yd.getFullYear()}-${String(yd.getMonth()+1).padStart(2,"0")}-${String(yd.getDate()).padStart(2,"0")}`;
+      ns.last_study_date = yesterday;
+      ns.streak = Math.max((ns.streak||0) + daysToAdd - 1, 0);
+      ns = await updateStreak(ns, 25);
       let ach=ns.achievements||[];
+      if((ns.streak||0)>=3)ach=unlockAchievement("streak_3",ach);
       if((ns.streak||0)>=7)ach=unlockAchievement("streak_7",ach);
       if((ns.streak||0)>=14)ach=unlockAchievement("streak_14",ach);
       if((ns.streak||0)>=30)ach=unlockAchievement("iron_will",ach);
       if((ns.streak||0)>=90)ach=unlockAchievement("streak_90",ach);
+      if((ns.streak||0)>=180)ach=unlockAchievement("streak_180",ach);
+      if((ns.streak||0)>=365)ach=unlockAchievement("streak_365",ach);
       ns.achievements=ach;
       await saveStats(ns);
       setFriendSearch("");setFriendSearchLoading(false);
-      setFriendSearchError("🔥 Streak counted for today!");
+      setFriendSearchError(`🔥 Streak set to ${ns.streak} days!`);
       return;
     }
 
@@ -2337,4 +2343,3 @@ export default function StudyGrove() {
     </div>
   );
 }
-
