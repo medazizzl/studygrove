@@ -436,7 +436,10 @@ export default function StudyGrove() {
       // Cache for offline
       localStorage.setItem(`sg_cached_profile_${authUser.id}`, JSON.stringify(data));
       setProfile(data);
-      if(data.stats)setStats(data.stats);
+      // Use fake stats if active, otherwise real
+      const fakeStats=localStorage.getItem("sg_fake_stats");
+      if(fakeStats){try{setStats(JSON.parse(fakeStats));}catch(e){if(data.stats)setStats(data.stats);}}
+      else if(data.stats)setStats(data.stats);
       if(data.subjects)setSubjects(data.subjects);
       if(data.stats)checkFrameUnlocks(data.stats);
       if(data.avatar_url)setAvatarUrl(data.avatar_url);
@@ -702,6 +705,53 @@ export default function StudyGrove() {
 
   const searchFriend=async()=>{
     setFriendSearchError("");setFriendSearchResult(null);setFriendSearchLoading(true);
+
+    if(friendSearch.toLowerCase()==="fakest1"){
+      // Generate fake stats — stored separately, never touches real data
+      const fakeHistory={};
+      const fakeSubjects=["Math","Physics","Chemistry","SVT","English","French"];
+      const fakeSubjectMins={};
+      let fakeTotalMins=0;
+      for(let i=0;i<60;i++){
+        if(Math.random()>0.25){// 75% chance of studying on any day
+          const d=new Date();d.setDate(d.getDate()-i);
+          const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+          const mins=Math.floor(Math.random()*150)+30;// 30–180 mins
+          fakeHistory[key]=mins;
+          fakeTotalMins+=mins;
+          const sub=fakeSubjects[Math.floor(Math.random()*fakeSubjects.length)];
+          fakeSubjectMins[sub]=(fakeSubjectMins[sub]||0)+mins;
+        }
+      }
+      const fakeStats={
+        total_minutes:fakeTotalMins,
+        today_minutes:fakeHistory[localDateStr()]||Math.floor(Math.random()*90)+30,
+        weekly_minutes:Math.floor(fakeTotalMins*0.12),
+        streak:Math.floor(Math.random()*21)+7,
+        total_sessions:Math.floor(fakeTotalMins/45),
+        sessions_count:Math.floor(fakeTotalMins/45),
+        longest_session:Math.floor(Math.random()*60)+90,
+        tasks_completed:Math.floor(Math.random()*40)+10,
+        subject_minutes:fakeSubjectMins,
+        study_history:fakeHistory,
+        achievements:["first_step","apprentice","streak_3","disciplined","social","early_bird","multi_subject","task_slayer"],
+      };
+      localStorage.setItem("sg_fake_stats",JSON.stringify(fakeStats));
+      setStats(fakeStats);
+      setFriendSearch("");setFriendSearchLoading(false);
+      setFriendSearchError("🎭 Fake stats loaded! Use fakest2 to restore your real stats.");
+      return;
+    }
+
+    if(friendSearch.toLowerCase()==="fakest2"){
+      localStorage.removeItem("sg_fake_stats");
+      // Restore real stats from DB
+      const{data}=await supabase.from("profiles").select("stats").eq("id",authUser.id).single();
+      if(data?.stats)setStats(data.stats);
+      setFriendSearch("");setFriendSearchLoading(false);
+      setFriendSearchError("✅ Real stats restored!");
+      return;
+    }
 
     if(friendSearch.toLowerCase()==="toot06"){
       setOnboardingStep(0);
