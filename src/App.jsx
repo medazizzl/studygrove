@@ -32,15 +32,12 @@ const getXPProgress=(xp)=>{
 };
 
 // Calculates XP gained from a session — stores in stats.total_xp (Supabase)
-const MAX_DAILY_XP = 600;
-
-const calcSessionXP=(currentStats, minutesStudied, pomodorosToday)=>{
-  const todayStr=`${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}-${String(new Date().getDate()).padStart(2,"0")}`;
-  let gained=minutesStudied;
+const calcSessionXP=(currentStats, minutesStudied, pomodorosToday, localDateStr)=>{
+  let gained=minutesStudied; // 1 min = 1 XP base
   const bonuses=[];
 
   // Daily first session bonus
-  if(currentStats.last_study_date!==todayStr){
+  if(currentStats.last_study_date!==localDateStr()){
     gained+=10; bonuses.push("+10 XP first session bonus");
   }
   // Pomodoro focus master bonus
@@ -53,20 +50,11 @@ const calcSessionXP=(currentStats, minutesStudied, pomodorosToday)=>{
   if(streak===7){gained+=25;bonuses.push("+25 XP 7-day streak");}
   if(streak===30){gained+=100;bonuses.push("+100 XP 30-day streak");}
 
-  // Daily XP cap
-  const dailyXPKey=`daily_xp_${todayStr}`;
-  const dailyXPSoFar=currentStats[dailyXPKey]||0;
-  const remaining=Math.max(0, MAX_DAILY_XP-dailyXPSoFar);
-  if(gained>remaining){
-    gained=remaining;
-    if(remaining===0) bonuses.push("Daily XP cap reached (600 XP/day)");
-  }
-
   const oldXP=currentStats.total_xp||0;
   const newXP=oldXP+gained;
   const oldLevel=getLevelFromXP(oldXP);
   const newLevel=getLevelFromXP(newXP);
-  return{gained,newXP,oldLevel,newLevel,leveledUp:newLevel>oldLevel,bonuses,dailyXPKey,dailyXPSoFar:dailyXPSoFar+gained};
+  return{gained,newXP,oldLevel,newLevel,leveledUp:newLevel>oldLevel,bonuses};
 };
 
 
@@ -372,7 +360,7 @@ export default function StudyGrove() {
   const [showRegPass, setShowRegPass] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [isMobile, setIsMobile] = useState(()=>typeof window!=="undefined"&&window.innerWidth<=600);
-  const [isOnline, setIsOnline] = useState(typeof navigator!=="undefined"?navigator.onLine:true);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
   useEffect(()=>{
     const on=()=>setIsOnline(true);
     const off=()=>setIsOnline(false);
@@ -693,17 +681,17 @@ export default function StudyGrove() {
     channelRef.current.track({user_id:authUser?.id,username:profile?.username,status:studying?(invisible?"invisible":"studying"):"online",subject:selectedSubject});
   },[studying,invisible,selectedSubject,profile]);
 
-  const trackActivityRef = useRef(null);
-
   useEffect(()=>{
     if(studying){
-      // Store reference so we can properly remove it
-      trackActivityRef.current=()=>{lastActivityRef.current=Date.now();setIsInactive(false);};
-      window.addEventListener("mousemove",trackActivityRef.current);
-      window.addEventListener("keydown",trackActivityRef.current);
-      window.addEventListener("touchstart",trackActivityRef.current);
+      // Inactivity detection — pause XP after 5 min no activity
+      const trackActivity=()=>{lastActivityRef.current=Date.now();setIsInactive(false);};
+      window.addEventListener("mousemove",trackActivity);
+      window.addEventListener("keydown",trackActivity);
+      window.addEventListener("touchstart",trackActivity);
       inactivityRef.current=setInterval(()=>{
-        if(Date.now()-lastActivityRef.current>300000) setIsInactive(true);
+        if(Date.now()-lastActivityRef.current>300000){// 5 min
+          setIsInactive(true);
+        }
       },10000);
       timerRef.current=setInterval(()=>{
         setIsInactive(inactive=>{
@@ -719,25 +707,14 @@ export default function StudyGrove() {
     }else{
       clearInterval(timerRef.current);
       clearInterval(inactivityRef.current);
-      if(trackActivityRef.current){
-        window.removeEventListener("mousemove",trackActivityRef.current);
-        window.removeEventListener("keydown",trackActivityRef.current);
-        window.removeEventListener("touchstart",trackActivityRef.current);
-        trackActivityRef.current=null;
-      }
+      window.removeEventListener("mousemove",()=>{});
+      window.removeEventListener("keydown",()=>{});
+      window.removeEventListener("touchstart",()=>{});
       setIsInactive(false);
       if(quoteTimer){clearInterval(quoteTimer);setQuoteTimer(null);}
       setCurrentQuote("");
     }
-    return()=>{
-      clearInterval(timerRef.current);
-      clearInterval(inactivityRef.current);
-      if(trackActivityRef.current){
-        window.removeEventListener("mousemove",trackActivityRef.current);
-        window.removeEventListener("keydown",trackActivityRef.current);
-        window.removeEventListener("touchstart",trackActivityRef.current);
-      }
-    };
+    return()=>{clearInterval(timerRef.current);clearInterval(inactivityRef.current);};
   },[studying]);
 
   useEffect(()=>{
@@ -774,7 +751,7 @@ export default function StudyGrove() {
       setStudying(false);
       const mins=Math.floor(sessionSecs/60);
       if(mins>0){
-        const xpResult=calcSessionXP(stats,mins,pomodorosToday);
+        const xpResult=calcSessionXP(stats,mins,pomodorosToday,localDateStr);
 
         let nsBase={...stats,
           total_minutes:(stats.total_minutes||0)+mins,
@@ -786,7 +763,6 @@ export default function StudyGrove() {
           subject_minutes:{...(stats.subject_minutes||{}),[selectedSubject]:((stats.subject_minutes||{})[selectedSubject]||0)+mins},
           invisible_minutes:invisible?(stats.invisible_minutes||0)+mins:(stats.invisible_minutes||0),
           total_xp:xpResult.newXP,
-          [xpResult.dailyXPKey]:xpResult.dailyXPSoFar,
         };
         const ns=await updateStreak(nsBase,mins);
         let ach=ns.achievements||[];
@@ -1419,33 +1395,6 @@ export default function StudyGrove() {
     }
   },[]);
 
-  // Weekly study hours — last 7 days
-  const weeklyBarData = (() => {
-    const days = [];
-    for(let i=6; i>=0; i--){
-      const d = new Date();
-      d.setDate(d.getDate()-i);
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-      const label = i===0?"Today":["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()];
-      const mins = stats.study_history?.[key] || 0;
-      days.push({key, label, mins});
-    }
-    return days;
-  })();
-  const weeklyBarMax = Math.max(...weeklyBarData.map(d=>d.mins), 1);
-
-  // Streak history — last 30 days (1=studied, 0=missed)
-  const streakHistory = (() => {
-    const days = [];
-    for(let i=29; i>=0; i--){
-      const d = new Date();
-      d.setDate(d.getDate()-i);
-      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
-      days.push({key, studied: !!(stats.study_history?.[key])});
-    }
-    return days;
-  })();
-
   // Heatmap — last 28 weeks (196 days)
   const heatmapDays = (() => {
     const days = [];
@@ -1991,7 +1940,7 @@ export default function StudyGrove() {
               {showAddSubject&&(
                 <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:14}}>
                   <input style={{...css.input,maxWidth:180}} placeholder="Subject name" value={newSubject} onChange={e=>setNewSubject(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&newSubject.trim()){setSubjects(p=>[...p,newSubject]);setNewSubject("");setShowAddSubject(false);}}}/>
-                  <button style={css.btn} onClick={()=>{if(newSubject.trim()&&!subjects.includes(newSubject.trim())){setSubjects(p=>[...p,newSubject.trim()]);setNewSubject("");setShowAddSubject(false);}}}>Add</button>
+                  <button style={css.btn} onClick={()=>{if(newSubject.trim()){setSubjects(p=>[...p,newSubject]);setNewSubject("");setShowAddSubject(false);}}}>Add</button>
                 </div>
               )}
               <button onClick={startStop} style={{...css.btn,padding:"14px 48px",fontSize:18,background:studying?"#cc2222":T.accent,color:studying?"#fff":"#000",borderRadius:14,boxShadow:studying?`0 0 20px #cc222240`:`0 0 20px ${T.accent}40`}}>
@@ -2319,50 +2268,6 @@ export default function StudyGrove() {
                     </div>);
                   })
                 }
-              </div>
-
-              <div style={css.card}>
-              {/* ── WEEKLY HOURS BAR CHART ── */}
-              <div style={{...css.card,gridColumn:"1/-1"}}>
-                <div style={{fontWeight:700,marginBottom:16}}>📈 Weekly Study Hours</div>
-                <div style={{display:"flex",alignItems:"flex-end",gap:8,height:120}}>
-                  {weeklyBarData.map((d,i)=>{
-                    const pct=d.mins/weeklyBarMax;
-                    const isToday=i===6;
-                    return(
-                      <div key={d.key} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-                        <div style={{fontSize:10,color:T.sub,fontWeight:600}}>{d.mins>0?fmtMins(d.mins):""}</div>
-                        <div style={{width:"100%",borderRadius:"4px 4px 0 0",background:isToday?T.accent:`${T.accent}66`,height:`${Math.max(pct*90,d.mins>0?4:0)}px`,minHeight:d.mins>0?4:0,transition:"height 0.5s",position:"relative"}}>
-                          {isToday&&<div style={{position:"absolute",top:-2,left:"50%",transform:"translateX(-50%)",width:6,height:6,borderRadius:"50%",background:T.accent}}/>}
-                        </div>
-                        <div style={{fontSize:10,color:isToday?T.accent:T.sub,fontWeight:isToday?700:400}}>{d.label}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",marginTop:8,fontSize:11,color:T.sub}}>
-                  <span>Total this week: <strong style={{color:T.accent}}>{fmtMins(weeklyBarData.reduce((a,d)=>a+d.mins,0))}</strong></span>
-                  <span>Best day: <strong style={{color:T.accent}}>{fmtMins(weeklyBarMax)}</strong></span>
-                </div>
-              </div>
-
-              {/* ── STREAK HISTORY ── */}
-              <div style={{...css.card,gridColumn:"1/-1"}}>
-                <div style={{fontWeight:700,marginBottom:12}}>🔥 30-Day Study History</div>
-                <div style={{display:"flex",gap:3,flexWrap:"wrap"}}>
-                  {streakHistory.map((d,i)=>{
-                    const isToday=i===29;
-                    return(
-                      <div key={d.key} title={d.key} style={{width:24,height:24,borderRadius:6,background:d.studied?T.accent:T.surface,border:`1px solid ${d.studied?T.accent:T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,boxShadow:isToday?`0 0 8px ${T.accent}`:"none"}}>
-                        {d.studied?"✓":""}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{display:"flex",gap:16,marginTop:10,fontSize:11,color:T.sub}}>
-                  <span>✓ = studied · blank = missed</span>
-                  <span style={{marginLeft:"auto"}}>Studied: <strong style={{color:T.accent}}>{streakHistory.filter(d=>d.studied).length}/30 days</strong></span>
-                </div>
               </div>
 
               <div style={css.card}>
