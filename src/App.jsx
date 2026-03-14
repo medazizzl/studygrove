@@ -52,12 +52,14 @@ const ACHIEVEMENTS = [
 
 
 const getStreakFlame = (streak) => {
-  if (streak >= 365) return { icon:"💙", label:"Legendary", color:"#4fc3f7" };
-  if (streak >= 180) return { icon:"💜", label:"Elite",     color:"#ce93d8" };
-  if (streak >= 90)  return { icon:"🔴", label:"Veteran",   color:"#ef5350" };
-  if (streak >= 14)  return { icon:"🟠", label:"Rising",    color:"#ff7043" };
-  if (streak >= 7)   return { icon:"🔥", label:"Warming Up",color:"#ffd600" };
-  return { icon:"🔥", label:"Starter", color:"#888888" };
+  if (streak >= 365) return { icon:"🔥", label:"Legendary",  color:"#4fc3f7", size:1.6 };
+  if (streak >= 180) return { icon:"🔥", label:"Elite",      color:"#ce93d8", size:1.5 };
+  if (streak >= 90)  return { icon:"🔥", label:"Veteran",    color:"#ff1744", size:1.4 };
+  if (streak >= 30)  return { icon:"🔥", label:"Iron Will",  color:"#ff6d00", size:1.3 };
+  if (streak >= 14)  return { icon:"🔥", label:"Rising",     color:"#ff9100", size:1.2 };
+  if (streak >= 7)   return { icon:"🔥", label:"Warming Up", color:"#ffd600", size:1.1 };
+  if (streak >= 3)   return { icon:"🔥", label:"Started",    color:"#ffb300", size:1.0 };
+  return                    { icon:"🔥", label:"Starter",    color:"#555555", size:0.9 };
 };
 const fmtTime = (s) => {
   const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
@@ -1182,12 +1184,13 @@ export default function StudyGrove() {
   })();
   const heatmapMax = Math.max(...heatmapDays.map(d=>d.mins), 1);
   const heatmapColor = (mins) => {
-    if(!mins) return T.border;
+    if(!mins) return T.surface;
     const pct = mins/heatmapMax;
-    if(pct < 0.25) return T.accent+"55";
-    if(pct < 0.5)  return T.accent+"88";
-    if(pct < 0.75) return T.accent+"bb";
-    return T.accent;
+    if(pct < 0.25) return "#7f1d1d"; // very low — dark red
+    if(pct < 0.5)  return "#dc2626"; // low — red
+    if(pct < 0.75) return "#f59e0b"; // medium — amber
+    if(pct < 0.9)  return "#84cc16"; // good — yellow-green
+    return "#22c55e";                // great — full green
   };
 
   const pomPct=((25*60-pomodoroSecs)/(25*60))*100;
@@ -1962,7 +1965,7 @@ export default function StudyGrove() {
               <div style={css.card}>
                 <div style={{fontWeight:700,marginBottom:12}}>🔥 Streak Info</div>
                 <div style={{textAlign:"center",padding:"16px 0"}}>
-                  <div style={{fontSize:48}}>{getStreakFlame(stats.streak||0).icon}</div>
+                  <div style={{fontSize:48*getStreakFlame(stats.streak||0).size,filter:`drop-shadow(0 0 12px ${getStreakFlame(stats.streak||0).color})`}}>{getStreakFlame(stats.streak||0).icon}</div>
                   <div style={{fontSize:36,fontWeight:900,color:getStreakFlame(stats.streak||0).color,marginTop:8}}>{stats.streak||0}</div>
                   <div style={{fontSize:13,color:T.sub,marginTop:4}}>day streak · {getStreakFlame(stats.streak||0).label}</div>
                 </div>
@@ -1979,25 +1982,31 @@ export default function StudyGrove() {
 
               <div style={{...css.card,gridColumn:"1/-1"}}>
                 <div style={{fontWeight:700,marginBottom:4}}>📊 Study Heatmap</div>
-                <div style={{fontSize:12,color:T.sub,marginBottom:12}}>Last 28 weeks of activity</div>
-                <div style={{overflowX:"auto",paddingBottom:4}}>
-                  <div style={{display:"grid",gridTemplateColumns:`repeat(28,1fr)`,gap:3,minWidth:420}}>
-                    {Array(28).fill(null).map((_,col)=>(
-                      <div key={col} style={{display:"flex",flexDirection:"column",gap:3}}>
-                        {heatmapDays.slice(col*7,(col+1)*7).map((day,row)=>(
-                          <div key={day.key} title={`${day.key}: ${fmtMins(day.mins)}`} style={{width:"100%",paddingTop:"100%",borderRadius:3,background:heatmapColor(day.mins),cursor:"default",position:"relative"}}>
+                <div style={{fontSize:12,color:T.sub,marginBottom:12}}>Last 28 weeks · colors are relative to your personal best day</div>
+                <div style={{overflowX:"auto",paddingBottom:8}}>
+                  <div style={{display:"flex",gap:3,minWidth:420}}>
+                    {Array(28).fill(null).map((_,col)=>{
+                      const weekDays=heatmapDays.slice(col*7,(col+1)*7);
+                      const firstOfMonth=weekDays.find(d=>d.key.endsWith("-01"));
+                      return(
+                        <div key={col} style={{display:"flex",flexDirection:"column",gap:3,alignItems:"center"}}>
+                          <div style={{fontSize:8,color:firstOfMonth?T.accent:"transparent",fontWeight:700,height:12,whiteSpace:"nowrap"}}>
+                            {firstOfMonth?new Date(firstOfMonth.key).toLocaleString("en",{month:"short"}):"·"}
                           </div>
-                        ))}
-                      </div>
-                    ))}
+                          {weekDays.map((day)=>(
+                            <div key={day.key} title={`${day.key}: ${fmtMins(day.mins)}`} style={{width:14,height:14,borderRadius:3,background:heatmapColor(day.mins),flexShrink:0,cursor:"default"}}/>
+                          ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,fontSize:11,color:T.sub}}>
-                  <span>Less</span>
-                  {[0,0.25,0.5,0.75,1].map((p,i)=>(
-                    <div key={i} style={{width:12,height:12,borderRadius:2,background:p===0?T.border:T.accent+(p<0.25?"55":p<0.5?"88":p<0.75?"bb":"ff")}}/>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,fontSize:11,color:T.sub}}>
+                  <span>None</span>
+                  {[T.surface,"#7f1d1d","#dc2626","#f59e0b","#84cc16","#22c55e"].map((c,i)=>(
+                    <div key={i} style={{width:12,height:12,borderRadius:2,background:c,border:`1px solid ${T.border}`}}/>
                   ))}
-                  <span>More</span>
+                  <span>🔥 Great</span>
                 </div>
               </div>
 
