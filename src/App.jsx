@@ -412,6 +412,8 @@ export default function StudyGrove() {
   const [stats, setStats] = useState({total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0,night_sessions:0,early_sessions:0,groups_joined:0,focus_uses:0,themes_used:1,challenge_wins:0});
   const [isPro] = useState(false); // set to true when payment confirmed
   const [selectedFrame, setSelectedFrame] = useState(()=>localStorage.getItem("sg_frame")||"none");
+  const [profileTitle, setProfileTitle] = useState(()=>localStorage.getItem("sg_title")||"");
+  const [currentQuote, setCurrentQuote] = useState("");
   const [showProModal, setShowProModal] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
