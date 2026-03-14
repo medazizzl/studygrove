@@ -93,10 +93,10 @@ const ACHIEVEMENTS = [
   { id:"perfectionist",    icon:"💎", name:"Perfectionist",         desc:"Study 7 days without chatting",       secret:true  },
   { id:"architect",        icon:"🏗️", name:"The Architect",        desc:"Discover the hidden easter egg",      secret:true  },
   { id:"streak_7",         icon:"🔥", name:"Week Warrior",          desc:"7-day study streak",                  secret:false },
-  { id:"streak_14",        icon:"🟠", name:"Two Week Grind",        desc:"14-day study streak",                 secret:false },
-  { id:"streak_90",        icon:"🔴", name:"Centurion",             desc:"90-day study streak",                 secret:false },
-  { id:"streak_180",       icon:"💜", name:"Half Year Legend",      desc:"180-day study streak",                secret:false },
-  { id:"streak_365",       icon:"💙", name:"Year of Discipline",    desc:"365-day study streak",                secret:false },
+  { id:"streak_14",        icon:"🔥", name:"Two Week Grind",        desc:"14-day study streak",                 secret:false },
+  { id:"streak_90",        icon:"🔥", name:"Centurion",             desc:"90-day study streak",                 secret:false },
+  { id:"streak_180",       icon:"🔥", name:"Half Year Legend",      desc:"180-day study streak",                secret:false },
+  { id:"streak_365",       icon:"🔥", name:"Year of Discipline",    desc:"365-day study streak",                secret:false },
 ];
 
 
@@ -2278,10 +2278,10 @@ export default function StudyGrove() {
                   <div style={{fontSize:13,color:T.sub,marginTop:4}}>day streak · {getStreakFlame(stats.streak||0).label}</div>
                 </div>
                 <div style={{marginTop:8}}>
-                  {[[7,"🟡","7-day"],[14,"🟠","14-day"],[90,"🔴","90-day"],[180,"💜","180-day"],[365,"💙","365-day"]].map(([n,icon,label])=>(
+                  {[[3,"🔥","3-day","Started"],[7,"🔥","7-day","Warming Up"],[14,"🔥","14-day","Rising"],[30,"🔥","30-day","Iron Will"],[90,"🔥","90-day","Veteran"],[180,"🔥","180-day","Elite"],[365,"🔥","365-day","Legendary"]].map(([n,icon,label,tier])=>(
                     <div key={n} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.border}`,opacity:(stats.streak||0)>=n?1:0.35}}>
-                      <span style={{fontSize:18}}>{icon}</span>
-                      <span style={{fontSize:13,flex:1}}>{label} streak</span>
+                      <span style={{fontSize:18,filter:getStreakFlame(n).filter}}>{icon}</span>
+                      <span style={{fontSize:13,flex:1}}>{label} · <span style={{color:getStreakFlame(n).glow,fontWeight:600}}>{tier}</span></span>
                       {(stats.streak||0)>=n?<span style={{fontSize:11,color:T.accent,fontWeight:700}}>✓ Reached</span>:<span style={{fontSize:11,color:T.sub}}>{n-(stats.streak||0)} days left</span>}
                     </div>
                   ))}
