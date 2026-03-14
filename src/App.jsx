@@ -1055,14 +1055,18 @@ export default function StudyGrove() {
       const thisMonth = today.substring(0,7);
       const revivesThisMonth = currentStats.revives_month === thisMonth ? (currentStats.revives_used||0) : 0;
       if (revivesThisMonth < 3) {
-        return { ...currentStats, streak: streak+1, last_study_date: today, revives_used: revivesThisMonth+1, revives_month: thisMonth, streak_revived: true };
+        return { ...currentStats, streak: streak+1, last_study_date: today, revives_used: revivesThisMonth+1, revives_month: thisMonth, streak_revived: true,
+          study_history: {...(currentStats.study_history||{}), [today]: (currentStats.study_history?.[today]||0) + sessionMins}
+        };
       } else {
         streak = 1;
       }
     } else {
       streak = 1; // first ever session
     }
-    return { ...currentStats, streak, last_study_date: today, streak_revived: false };
+    return { ...currentStats, streak, last_study_date: today, streak_revived: false,
+      study_history: {...(currentStats.study_history||{}), [today]: (currentStats.study_history?.[today]||0) + sessionMins}
+    };
   };
 
   const getRevivesLeft = () => {
@@ -1112,6 +1116,29 @@ export default function StudyGrove() {
       setTimeout(() => setFriendNotif(null), 5000);
     }
   }, [onlineMembers]);
+
+  // Heatmap — last 28 weeks (196 days)
+  const heatmapDays = (() => {
+    const days = [];
+    const today = new Date();
+    for(let i=195; i>=0; i--){
+      const d = new Date(today);
+      d.setDate(d.getDate()-i);
+      const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      const mins = stats.study_history?.[key] || 0;
+      days.push({key, mins, day:d.getDay()});
+    }
+    return days;
+  })();
+  const heatmapMax = Math.max(...heatmapDays.map(d=>d.mins), 1);
+  const heatmapColor = (mins) => {
+    if(!mins) return T.border;
+    const pct = mins/heatmapMax;
+    if(pct < 0.25) return T.accent+"55";
+    if(pct < 0.5)  return T.accent+"88";
+    if(pct < 0.75) return T.accent+"bb";
+    return T.accent;
+  };
 
   const pomPct=((25*60-pomodoroSecs)/(25*60))*100;
 
@@ -1897,6 +1924,30 @@ export default function StudyGrove() {
                       {(stats.streak||0)>=n?<span style={{fontSize:11,color:T.accent,fontWeight:700}}>✓ Reached</span>:<span style={{fontSize:11,color:T.sub}}>{n-(stats.streak||0)} days left</span>}
                     </div>
                   ))}
+                </div>
+              </div>
+
+              <div style={{...css.card,gridColumn:"1/-1"}}>
+                <div style={{fontWeight:700,marginBottom:4}}>📊 Study Heatmap</div>
+                <div style={{fontSize:12,color:T.sub,marginBottom:12}}>Last 28 weeks of activity</div>
+                <div style={{overflowX:"auto",paddingBottom:4}}>
+                  <div style={{display:"grid",gridTemplateColumns:`repeat(28,1fr)`,gap:3,minWidth:420}}>
+                    {Array(28).fill(null).map((_,col)=>(
+                      <div key={col} style={{display:"flex",flexDirection:"column",gap:3}}>
+                        {heatmapDays.slice(col*7,(col+1)*7).map((day,row)=>(
+                          <div key={day.key} title={`${day.key}: ${fmtMins(day.mins)}`} style={{width:"100%",paddingTop:"100%",borderRadius:3,background:heatmapColor(day.mins),cursor:"default",position:"relative"}}>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:10,fontSize:11,color:T.sub}}>
+                  <span>Less</span>
+                  {[0,0.25,0.5,0.75,1].map((p,i)=>(
+                    <div key={i} style={{width:12,height:12,borderRadius:2,background:p===0?T.border:T.accent+(p<0.25?"55":p<0.5?"88":p<0.75?"bb":"ff")}}/>
+                  ))}
+                  <span>More</span>
                 </div>
               </div>
 
