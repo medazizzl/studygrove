@@ -1391,25 +1391,6 @@ export default function StudyGrove() {
     }
   },[]);
 
-  // Inactivity detection — pause XP if no mouse/keyboard for 3 minutes while studying
-  useEffect(()=>{
-    if(!studying) return;
-    const resetActivity=()=>{ setLastActivityTime(Date.now()); setIsInactive(false); };
-    window.addEventListener("mousemove",resetActivity);
-    window.addEventListener("keydown",resetActivity);
-    window.addEventListener("touchstart",resetActivity);
-    const checkInactive=setInterval(()=>{
-      if(Date.now()-lastActivityTime > 3*60*1000) setIsInactive(true);
-      else setIsInactive(false);
-    },10000);
-    return()=>{
-      window.removeEventListener("mousemove",resetActivity);
-      window.removeEventListener("keydown",resetActivity);
-      window.removeEventListener("touchstart",resetActivity);
-      clearInterval(checkInactive);
-    };
-  },[studying, lastActivityTime]);
-
   // Heatmap — last 28 weeks (196 days)
   const heatmapDays = (() => {
     const days = [];
