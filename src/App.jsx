@@ -256,6 +256,14 @@ export default function StudyGrove() {
   const [showRegPass, setShowRegPass] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [isMobile, setIsMobile] = useState(()=>typeof window!=="undefined"&&window.innerWidth<=600);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  useEffect(()=>{
+    const on=()=>setIsOnline(true);
+    const off=()=>setIsOnline(false);
+    window.addEventListener("online",on);
+    window.addEventListener("offline",off);
+    return()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+  },[]);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
 
@@ -393,9 +401,17 @@ export default function StudyGrove() {
   useEffect(()=>{
     if(!authUser){setProfile(null);return;}
     loadProfile();
-    loadTasks();
-    loadGroup();
-    loadFriends();
+    if(navigator.onLine){
+      loadTasks();
+      loadGroup();
+      loadFriends();
+    } else {
+      // Load cached tasks
+      try{
+        const t=localStorage.getItem(`sg_cached_tasks_${authUser.id}`);
+        if(t)setTasks(JSON.parse(t));
+      }catch(e){}
+    }
   },[authUser]);
 
   const loadProfile=async()=>{
@@ -485,7 +501,10 @@ export default function StudyGrove() {
 
   const loadTasks=async()=>{
     const{data}=await supabase.from("tasks").select("*").eq("user_id",authUser.id).order("created_at",{ascending:false});
-    if(data)setTasks(data);
+    if(data){
+      setTasks(data);
+      localStorage.setItem(`sg_cached_tasks_${authUser.id}`,JSON.stringify(data));
+    }
   };
 
   const loadGroup=async()=>{
@@ -1416,6 +1435,12 @@ export default function StudyGrove() {
 
       </div>{/* ── END HEADER ── */}
 
+      {!isOnline&&(
+        <div style={{background:"#f59e0b",color:"#000",textAlign:"center",padding:"6px 16px",fontSize:12,fontWeight:700}}>
+          ⚡ You're offline — timer still works, changes will sync when you reconnect
+        </div>
+      )}
+
       {isMobile&&showMobileMenu&&(
         <div style={{position:"fixed",top:58,right:12,zIndex:500,background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:12,display:"flex",flexDirection:"column",gap:8,minWidth:180,boxShadow:`0 10px 40px rgba(0,0,0,0.5)`}}>
           <button style={{...css.btnO,fontSize:13,textAlign:"left"}} onClick={()=>{setInvisible(v=>!v);setShowMobileMenu(false);}}>{invisible?"👻 Go Visible":"🟢 Go Invisible"}</button>
@@ -1978,3 +2003,4 @@ export default function StudyGrove() {
     </div>
   );
 }
+
