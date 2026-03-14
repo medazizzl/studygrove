@@ -1149,7 +1149,26 @@ export default function StudyGrove() {
       // Read fresh from DB to avoid stale closure
       const { data } = await supabase.from("profiles").select("stats").eq("id", authUser.id).single();
       if (!data?.stats) return;
-      const updated = { ...data.stats, today_minutes: 0, ...(isMonday ? { weekly_minutes: 0 } : {}) };
+
+      // Check if streak should die
+      const yd = new Date(); yd.setDate(yd.getDate()-1);
+      const yesterday = `${yd.getFullYear()}-${String(yd.getMonth()+1).padStart(2,"0")}-${String(yd.getDate()).padStart(2,"0")}`;
+      const lastStudy = data.stats.last_study_date;
+      let streakUpdate = {};
+      if(lastStudy && lastStudy !== today && lastStudy !== yesterday){
+        // Missed at least one day — check revives
+        const thisMonth = today.substring(0,7);
+        const revivesUsed = data.stats.revives_month === thisMonth ? (data.stats.revives_used||0) : 0;
+        if(revivesUsed < 3){
+          // Auto revive
+          streakUpdate = {revives_used: revivesUsed+1, revives_month: thisMonth};
+        } else {
+          // Kill streak
+          streakUpdate = {streak: 0};
+        }
+      }
+
+      const updated = { ...data.stats, today_minutes: 0, ...(isMonday ? { weekly_minutes: 0 } : {}), ...streakUpdate };
       await supabase.from("profiles").update({ stats: updated, updated_at: new Date().toISOString() }).eq("id", authUser.id);
       setStats(updated);
     };
@@ -2318,3 +2337,4 @@ export default function StudyGrove() {
     </div>
   );
 }
+
