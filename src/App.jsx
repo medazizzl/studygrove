@@ -103,23 +103,23 @@ const ACHIEVEMENTS = [
 
 
 const getStreakFlame = (streak) => {
-  if (streak >= 365) return { label:"Legendary",  color:"#4fc3f7", emojis:"❄️🔥❄️", glow:"#4fc3f7" };
-  if (streak >= 180) return { label:"Elite",      color:"#ce93d8", emojis:"💜🔥💜", glow:"#ce93d8" };
-  if (streak >= 90)  return { label:"Veteran",    color:"#ff1744", emojis:"🔥🔥🔥", glow:"#ff1744" };
-  if (streak >= 30)  return { label:"Iron Will",  color:"#ff6d00", emojis:"🔥🔥",   glow:"#ff6d00" };
-  if (streak >= 14)  return { label:"Rising",     color:"#ff9100", emojis:"🔥🔥",   glow:"#ff9100" };
-  if (streak >= 7)   return { label:"Warming Up", color:"#ffd600", emojis:"🔥",     glow:"#ffd600" };
-  if (streak >= 3)   return { label:"Started",    color:"#ffb300", emojis:"🔥",     glow:"#ffb300" };
-  return                    { label:"Starter",    color:"#555555", emojis:"🔥",     glow:"transparent" };
+  if(streak >= 365) return {label:"Legendary", glow:"#4fc3f7", filter:"hue-rotate(200deg) saturate(3) brightness(1.4)", particles:["✦","·","✦","·","✦"], particleColor:"#4fc3f7"};
+  if(streak >= 180) return {label:"Elite",     glow:"#ce93d8", filter:"hue-rotate(260deg) saturate(3) brightness(1.3)", particles:["✦","·","✦","·"],     particleColor:"#ce93d8"};
+  if(streak >= 90)  return {label:"Veteran",   glow:"#ff1744", filter:"hue-rotate(340deg) saturate(4) brightness(1.2)", particles:["✦","·","✦","·"],     particleColor:"#ff4444"};
+  if(streak >= 30)  return {label:"Iron Will", glow:"#ff6d00", filter:"saturate(3) brightness(1.1)",                    particles:["·","✦","·"],          particleColor:"#ff9100"};
+  if(streak >= 14)  return {label:"Rising",    glow:"#ff9100", filter:"saturate(2) brightness(1.1)",                    particles:["·","✦"],              particleColor:"#ffb300"};
+  if(streak >= 7)   return {label:"Warming Up",glow:"#ffd600", filter:"saturate(1.5) brightness(1.1)",                  particles:["·"],                  particleColor:"#ffd600"};
+  if(streak >= 3)   return {label:"Started",   glow:"#ffb300", filter:"saturate(1.2)",                                  particles:[],                     particleColor:"#ffb300"};
+  return                   {label:"Starter",   glow:"transparent", filter:"grayscale(1) opacity(0.35)",                 particles:[],                     particleColor:"#555"};
 };
 
 if(typeof document!=="undefined"&&!document.getElementById("sg-flame-kf")){
   const s=document.createElement("style");
   s.id="sg-flame-kf";
   s.textContent=`
-    @keyframes flamePulse{0%,100%{transform:scale(1);filter:var(--flame-glow)}50%{transform:scale(1.12);filter:var(--flame-glow-bright)}}
-    @keyframes flameFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-    @keyframes flameSpark{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-20px) scale(0.3)}}
+    @keyframes flamePulse{0%,100%{transform:scale(1)}40%{transform:scale(1.08) translateY(-2px)}70%{transform:scale(0.96) translateY(1px)}}
+    @keyframes flameSpark{0%{opacity:1;transform:translateY(0) translateX(0) scale(1)}100%{opacity:0;transform:translateY(-32px) translateX(var(--sdx)) scale(0.2)}}
+    @keyframes flameWobble{0%,100%{transform:rotate(-2deg) scale(1)}50%{transform:rotate(2deg) scale(1.04)}}
   `;
   document.head.appendChild(s);
 }
@@ -127,38 +127,39 @@ if(typeof document!=="undefined"&&!document.getElementById("sg-flame-kf")){
 const StreakFlame=({streak,size=56})=>{
   const f=getStreakFlame(streak);
   const alive=streak>=1;
-  const glowVal=`drop-shadow(0 0 8px ${f.glow}) drop-shadow(0 0 16px ${f.glow}66)`;
-  const glowBright=`drop-shadow(0 0 14px ${f.glow}) drop-shadow(0 0 28px ${f.glow})`;
+  const glowStr=alive?`drop-shadow(0 0 ${size*0.15}px ${f.glow}) drop-shadow(0 0 ${size*0.3}px ${f.glow}88)`:"none";
+  const glowBright=alive?`drop-shadow(0 0 ${size*0.25}px ${f.glow}) drop-shadow(0 0 ${size*0.5}px ${f.glow})`:"none";
   return(
-    <div style={{position:"relative",display:"inline-flex",flexDirection:"column",alignItems:"center",gap:4}}>
+    <div style={{position:"relative",display:"inline-flex",alignItems:"center",justifyContent:"center",width:size*1.4,height:size*1.4}}>
+      {/* Glow halo behind fire */}
+      {alive&&<div style={{position:"absolute",width:size*0.8,height:size*0.8,borderRadius:"50%",background:`radial-gradient(circle,${f.glow}44 0%,transparent 70%)`,filter:"blur(8px)",animation:"flamePulse 1.8s ease-in-out infinite"}}/>}
+      {/* The fire emoji — colored via CSS filter */}
       <div style={{
         fontSize:size,
         lineHeight:1,
-        animation:alive?`flamePulse 2s ease-in-out infinite`:"none",
-        "--flame-glow":glowVal,
+        filter:`${f.filter} ${glowStr}`,
+        animation:alive?`flameWobble 1.6s ease-in-out infinite`:"none",
+        "--flame-glow":glowStr,
         "--flame-glow-bright":glowBright,
-        filter:alive?glowVal:"grayscale(1) opacity(0.3)",
-        cursor:"default",
         userSelect:"none",
-      }}>
-        {f.emojis.split("").filter(c=>c.trim()).join("")}
-      </div>
-      {/* Spark particles for high streaks */}
-      {streak>=30&&(
-        <div style={{position:"absolute",top:0,left:0,right:0,bottom:0,pointerEvents:"none"}}>
-          {["✦","·","✦","·"].map((p,i)=>(
-            <span key={i} style={{
-              position:"absolute",
-              left:`${20+i*18}%`,
-              top:`${10+i*5}%`,
-              fontSize:size*0.2,
-              color:f.color,
-              animation:`flameSpark ${1+i*0.4}s ease-out infinite`,
-              animationDelay:`${i*0.3}s`,
-            }}>{p}</span>
-          ))}
-        </div>
-      )}
+        position:"relative",
+        zIndex:2,
+      }}>🔥</div>
+      {/* Particles */}
+      {f.particles.map((p,i)=>(
+        <span key={i} style={{
+          position:"absolute",
+          left:`${15+i*22}%`,
+          bottom:`${55+i*8}%`,
+          fontSize:size*0.18,
+          color:f.particleColor,
+          fontWeight:700,
+          animation:`flameSpark ${0.9+i*0.35}s ease-out infinite`,
+          animationDelay:`${i*0.25}s`,
+          "--sdx":`${(i%2===0?-1:1)*(i+1)*5}px`,
+          zIndex:3,
+        }}>{p}</span>
+      ))}
     </div>
   );
 };
@@ -1683,7 +1684,7 @@ export default function StudyGrove() {
                 <div style={{fontSize:11,color:T.sub,marginTop:2}}>XP Earned</div>
               </div>
               <div style={{background:T.surface,borderRadius:10,padding:12,textAlign:"center"}}>
-                <div style={{fontSize:22,fontWeight:900,color:getStreakFlame(showSessionSummary.streak).color}}>{showSessionSummary.streak} 🔥</div>
+                <div style={{fontSize:22,fontWeight:900,color:getStreakFlame(showSessionSummary.streak).glow}}>{showSessionSummary.streak} 🔥</div>
                 <div style={{fontSize:11,color:T.sub,marginTop:2}}>Day Streak</div>
               </div>
               <div style={{background:T.surface,borderRadius:10,padding:12,textAlign:"center"}}>
@@ -1904,7 +1905,7 @@ export default function StudyGrove() {
                 <span>Today <strong style={{color:T.text}}>{fmtMins(stats.today_minutes||0)}</strong></span>
                 <span>Week <strong style={{color:T.text}}>{fmtMins(stats.weekly_minutes||0)}</strong></span>
                 <span>Total <strong style={{color:T.text}}>{fmtMins(stats.total_minutes||0)}</strong></span>
-                <span>Streak <strong style={{color:getStreakFlame(stats.streak||0).color}}>{stats.streak||0} 🔥</strong> <span style={{fontSize:10,color:T.sub}}>({getStreakFlame(stats.streak||0).label})</span></span>
+                <span>Streak <strong style={{color:getStreakFlame(stats.streak||0).glow}}>{stats.streak||0} 🔥</strong> <span style={{fontSize:10,color:T.sub}}>({getStreakFlame(stats.streak||0).label})</span></span>
               </div>
               {/* XP Level bar */}
               {(()=>{const lv=getXPProgress(stats.total_xp||0);return(
@@ -2239,7 +2240,7 @@ export default function StudyGrove() {
                     {label:"Today",val:fmtMins(stats.today_minutes||0),icon:"📅"},
                     {label:"This Week",val:fmtMins(stats.weekly_minutes||0),icon:"📆"},
                     {label:"Total",val:fmtMins(stats.total_minutes||0),icon:"⏱"},
-                    {label:"Streak",val:`${stats.streak||0}d`,icon:getStreakFlame(stats.streak||0).icon},
+                    {label:"Streak",val:`${stats.streak||0}d`,icon:"🔥"},
                   ].map(s=>(
                     <div key={s.label} style={{padding:16,background:T.surface,borderRadius:12,border:`1px solid ${T.border}`}}>
                       <div style={{fontSize:24}}>{s.icon}</div>
@@ -2273,7 +2274,7 @@ export default function StudyGrove() {
                 <div style={{fontWeight:700,marginBottom:12}}>🔥 Streak Info</div>
                 <div style={{textAlign:"center",padding:"16px 0"}}>
                   <StreakFlame streak={stats.streak||0} size={72}/>
-                  <div style={{fontSize:36,fontWeight:900,color:getStreakFlame(stats.streak||0).color,marginTop:8}}>{stats.streak||0}</div>
+                  <div style={{fontSize:36,fontWeight:900,color:getStreakFlame(stats.streak||0).glow,marginTop:8}}>{stats.streak||0}</div>
                   <div style={{fontSize:13,color:T.sub,marginTop:4}}>day streak · {getStreakFlame(stats.streak||0).label}</div>
                 </div>
                 <div style={{marginTop:8}}>
