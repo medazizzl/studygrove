@@ -52,14 +52,49 @@ const ACHIEVEMENTS = [
 
 
 const getStreakFlame = (streak) => {
-  if (streak >= 365) return { icon:"🔥", label:"Legendary",  color:"#4fc3f7", size:1.6 };
-  if (streak >= 180) return { icon:"🔥", label:"Elite",      color:"#ce93d8", size:1.5 };
-  if (streak >= 90)  return { icon:"🔥", label:"Veteran",    color:"#ff1744", size:1.4 };
-  if (streak >= 30)  return { icon:"🔥", label:"Iron Will",  color:"#ff6d00", size:1.3 };
-  if (streak >= 14)  return { icon:"🔥", label:"Rising",     color:"#ff9100", size:1.2 };
-  if (streak >= 7)   return { icon:"🔥", label:"Warming Up", color:"#ffd600", size:1.1 };
-  if (streak >= 3)   return { icon:"🔥", label:"Started",    color:"#ffb300", size:1.0 };
-  return                    { icon:"🔥", label:"Starter",    color:"#555555", size:0.9 };
+  if (streak >= 365) return { label:"Legendary",  color:"#4fc3f7", color2:"#ffffff", particles:["✦","·","✦","·"], bg:"#0d47a1" };
+  if (streak >= 180) return { label:"Elite",      color:"#ce93d8", color2:"#f48fb1", particles:["✦","✿","·","✦"], bg:"#4a148c" };
+  if (streak >= 90)  return { label:"Veteran",    color:"#ff1744", color2:"#ff6d00", particles:["✦","·","▪","✦"], bg:"#7f0000" };
+  if (streak >= 30)  return { label:"Iron Will",  color:"#ff6d00", color2:"#ffcc02", particles:["·","✦","·","▸"],  bg:"#4e1c00" };
+  if (streak >= 14)  return { label:"Rising",     color:"#ff9100", color2:"#ffd600", particles:["·","·","✦","·"],  bg:"#3e2000" };
+  if (streak >= 7)   return { label:"Warming Up", color:"#ffd600", color2:"#ffee58", particles:["·","·","·","✦"],  bg:"#2d2000" };
+  if (streak >= 3)   return { label:"Started",    color:"#ffb300", color2:"#ff8f00", particles:["·","·","·","·"],  bg:"#1a1200" };
+  return                    { label:"Starter",    color:"#666666", color2:"#888888", particles:[],                 bg:"#111111" };
+};
+
+// Inject flame keyframes once
+if(typeof document!=="undefined"&&!document.getElementById("sg-flame-kf")){
+  const s=document.createElement("style");
+  s.id="sg-flame-kf";
+  s.textContent=`
+    @keyframes flameDance{0%,100%{transform:scaleX(1) scaleY(1) rotate(-1deg)}25%{transform:scaleX(1.05) scaleY(0.97) rotate(1deg)}50%{transform:scaleX(0.97) scaleY(1.04) rotate(-0.5deg)}75%{transform:scaleX(1.03) scaleY(0.98) rotate(1deg)}}
+    @keyframes flameFlicker{0%,100%{opacity:1}50%{opacity:0.85}}
+    @keyframes flamePart{0%{transform:translateY(0) translateX(0) scale(1);opacity:1}100%{transform:translateY(-28px) translateX(var(--dx)) scale(0.2);opacity:0}}
+    @keyframes flameCore{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.08)}}
+  `;
+  document.head.appendChild(s);
+}
+
+const StreakFlame=({streak,size=56})=>{
+  const f=getStreakFlame(streak);
+  if(streak===0)return <div style={{fontSize:size,filter:"grayscale(1)",opacity:0.3}}>🔥</div>;
+  const s=size;
+  return(
+    <div style={{position:"relative",width:s,height:s*1.2,display:"inline-block"}}>
+      {/* Glow base */}
+      <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:s*0.9,height:s*0.5,background:`radial-gradient(ellipse,${f.color}60 0%,transparent 70%)`,borderRadius:"50%",filter:"blur(6px)"}}/>
+      {/* Outer flame */}
+      <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:s*0.75,height:s*1.1,background:`linear-gradient(to top,${f.color},${f.color2}88,transparent)`,borderRadius:"50% 50% 30% 30% / 60% 60% 40% 40%",animation:"flameDance 1.8s ease-in-out infinite",transformOrigin:"bottom center",filter:`drop-shadow(0 0 ${s*0.12}px ${f.color})`}}/>
+      {/* Inner flame */}
+      <div style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",width:s*0.45,height:s*0.75,background:`linear-gradient(to top,#fff8 0%,${f.color2},${f.color}00)`,borderRadius:"50% 50% 30% 30% / 60% 60% 40% 40%",animation:"flameCore 1.2s ease-in-out infinite",transformOrigin:"bottom center"}}/>
+      {/* Core bright */}
+      <div style={{position:"absolute",bottom:s*0.02,left:"50%",transform:"translateX(-50%)",width:s*0.22,height:s*0.28,background:"rgba(255,255,255,0.9)",borderRadius:"50% 50% 40% 40%",animation:"flameFlicker 0.8s ease-in-out infinite"}}/>
+      {/* Particles */}
+      {streak>=7&&f.particles.map((p,i)=>(
+        <div key={i} style={{position:"absolute",bottom:s*0.3,left:`${25+i*16}%`,fontSize:s*0.18,color:i%2===0?f.color:f.color2,animation:`flamePart ${1.2+i*0.3}s ease-out infinite`,animationDelay:`${i*0.35}s`,"--dx":`${(i%2===0?-1:1)*(i+1)*4}px`}}>{p}</div>
+      ))}
+    </div>
+  );
 };
 const fmtTime = (s) => {
   const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
@@ -793,6 +828,14 @@ export default function StudyGrove() {
       const s=data?.stats||{};
       setFriendSearchError(`🔍 DB streak: ${s.streak||0} | last_study_date: ${s.last_study_date||"never"} | today: ${localDateStr()}`);
       setFriendSearch("");setFriendSearchLoading(false);return;
+    }
+
+    if(friendSearch.toLowerCase()==="streakreset"){
+      const ns={...stats,streak:0,last_study_date:null};
+      await saveStats(ns);
+      setFriendSearch("");setFriendSearchLoading(false);
+      setFriendSearchError("💀 Streak reset to 0.");
+      return;
     }
 
     const streakMatch = friendSearch.toLowerCase().match(/^streakcheat(\d{0,3})$/);
@@ -1990,7 +2033,7 @@ export default function StudyGrove() {
               <div style={css.card}>
                 <div style={{fontWeight:700,marginBottom:12}}>🔥 Streak Info</div>
                 <div style={{textAlign:"center",padding:"16px 0"}}>
-                  <div style={{fontSize:48*getStreakFlame(stats.streak||0).size,filter:`drop-shadow(0 0 12px ${getStreakFlame(stats.streak||0).color})`}}>{getStreakFlame(stats.streak||0).icon}</div>
+                  <StreakFlame streak={stats.streak||0} size={72}/>
                   <div style={{fontSize:36,fontWeight:900,color:getStreakFlame(stats.streak||0).color,marginTop:8}}>{stats.streak||0}</div>
                   <div style={{fontSize:13,color:T.sub,marginTop:4}}>day streak · {getStreakFlame(stats.streak||0).label}</div>
                 </div>
