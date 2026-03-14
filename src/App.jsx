@@ -945,7 +945,8 @@ export default function StudyGrove() {
 
     if(input.toLowerCase()==="streakreset"){
       const ns={...stats,streak:0,last_study_date:null};
-      await saveStats(ns);
+      setStats(ns);
+      await supabase.from("profiles").update({stats:ns,updated_at:new Date().toISOString()}).eq("id",authUser.id);
       setFriendSearch("");setFriendSearchLoading(false);
       setFriendSearchError("💀 Streak reset to 0.");
       return;
