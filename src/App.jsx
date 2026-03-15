@@ -439,6 +439,18 @@ export default function StudyGrove() {
   const [currentQuote, setCurrentQuote] = useState("");
   const [showProModal, setShowProModal] = useState(false);
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
+  const [globalTop, setGlobalTop] = useState([]);
+  const [showFullGlobal, setShowFullGlobal] = useState(false);
+  const [fullGlobal, setFullGlobal] = useState([]);
+  const [globalLoading, setGlobalLoading] = useState(false);
+
+  // Social Challenges
+  const [socialChallenges, setSocialChallenges] = useState([]);
+  const [myChallengeMembers, setMyChallengeMembers] = useState({});
+  const [challengeTab, setChallengeTab] = useState("daily"); // daily|weekly|social
+  const [showCreateChallenge, setShowCreateChallenge] = useState(false);
+  const [challengeForm, setChallengeForm] = useState({title:"",goalHours:10,durationDays:7,friendCode:""});
+  const [challengeFormError, setChallengeFormError] = useState("");
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
   const [newTaskSubject, setNewTaskSubject] = useState("Math");
@@ -546,6 +558,8 @@ export default function StudyGrove() {
       loadTasks();
       loadGroup();
       loadFriends();
+      loadSocialChallenges();
+      loadGlobalTop();
     } else {
       // Load cached tasks
       try{
@@ -878,6 +892,103 @@ export default function StudyGrove() {
     const receivedFriends=(received||[]).map(f=>f.profiles).filter(Boolean);
     setFriends([...sentFriends,...receivedFriends]);
     setFriendRequests((pending||[]).map(f=>({...f.profiles,friendship_id:f.id})).filter(Boolean));
+  };
+
+  const loadGlobalTop=async()=>{
+    const{data}=await supabase.from("profiles").select("id,username,avatar_url,stats").order("created_at",{ascending:true}).limit(5);
+    if(data){
+      const sorted=[...data].sort((a,b)=>(b.stats?.total_xp||0)-(a.stats?.total_xp||0));
+      setGlobalTop(sorted);
+    }
+  };
+
+  const loadFullGlobal=async()=>{
+    setGlobalLoading(true);
+    const{data}=await supabase.from("profiles").select("id,username,avatar_url,stats").limit(50);
+    if(data){
+      const sorted=[...data].sort((a,b)=>(b.stats?.total_xp||0)-(a.stats?.total_xp||0));
+      setFullGlobal(sorted);
+    }
+    setGlobalLoading(false);
+  };
+
+  const loadSocialChallenges=async()=>{
+    if(!authUser)return;
+    // Get all challenges I'm part of
+    const{data:memberRows}=await supabase.from("challenge_members").select("challenge_id").eq("user_id",authUser.id);
+    if(!memberRows||memberRows.length===0)return;
+    const ids=memberRows.map(r=>r.challenge_id);
+    const{data:chals}=await supabase.from("study_challenges").select("*").in("id",ids);
+    if(!chals)return;
+    setSocialChallenges(chals);
+    // Load members for each challenge
+    const membersMap={};
+    for(const c of chals){
+      const{data:mems}=await supabase.from("challenge_members").select("*").eq("challenge_id",c.id);
+      if(mems){
+        // Enrich with profile data
+        const enriched=await Promise.all(mems.map(async m=>{
+          const{data:p}=await supabase.from("profiles").select("username,avatar_url,stats").eq("id",m.user_id).single();
+          return{...m,username:p?.username||"?",avatar_url:p?.avatar_url||null,weekly_minutes:p?.stats?.weekly_minutes||0,total_minutes:p?.stats?.total_minutes||0};
+        }));
+        membersMap[c.id]=enriched;
+      }
+    }
+    setMyChallengeMembers(membersMap);
+  };
+
+  const createSocialChallenge=async()=>{
+    setChallengeFormError("");
+    if(!challengeForm.title.trim()){setChallengeFormError("Add a title");return;}
+    if(challengeForm.goalHours<1||challengeForm.goalHours>1000){setChallengeFormError("Goal must be 1-1000 hours");return;}
+    if(challengeForm.durationDays<1||challengeForm.durationDays>365){setChallengeFormError("Duration must be 1-365 days");return;}
+    const endsAt=new Date();endsAt.setDate(endsAt.getDate()+parseInt(challengeForm.durationDays));
+    const{data:chal,error}=await supabase.from("study_challenges").insert({
+      creator_id:authUser.id,
+      title:challengeForm.title,
+      goal_hours:parseInt(challengeForm.goalHours),
+      duration_days:parseInt(challengeForm.durationDays),
+      ends_at:endsAt.toISOString(),
+    }).select().single();
+    if(error){setChallengeFormError(error.message);return;}
+    // Add creator as member
+    await supabase.from("challenge_members").insert({challenge_id:chal.id,user_id:authUser.id,username:profile?.username,avatar_url:avatarUrl,accepted:true});
+    // Invite friend by code if provided
+    if(challengeForm.friendCode.trim()){
+      const{data:fp}=await supabase.from("profiles").select("id,username").eq("friend_code",challengeForm.friendCode.toUpperCase()).single();
+      if(fp){
+        await supabase.from("challenge_members").insert({challenge_id:chal.id,user_id:fp.id,username:fp.username,accepted:false});
+      }
+    }
+    setShowCreateChallenge(false);
+    setChallengeForm({title:"",goalHours:10,durationDays:7,friendCode:""});
+    loadSocialChallenges();
+  };
+
+  const acceptSocialChallenge=async(challengeId)=>{
+    await supabase.from("challenge_members").update({accepted:true}).eq("challenge_id",challengeId).eq("user_id",authUser.id);
+    loadSocialChallenges();
+  };
+
+  const declineSocialChallenge=async(challengeId)=>{
+    await supabase.from("challenge_members").delete().eq("challenge_id",challengeId).eq("user_id",authUser.id);
+    loadSocialChallenges();
+  };
+
+  const getSocialChallengeProgress=(challenge,membersData)=>{
+    const goalMins=challenge.goal_hours*60;
+    const startDate=new Date(challenge.created_at);
+    const endDate=new Date(challenge.ends_at);
+    const now=new Date();
+    const totalDays=Math.ceil((endDate-startDate)/(1000*60*60*24));
+    const daysLeft=Math.max(0,Math.ceil((endDate-now)/(1000*60*60*24)));
+    const dayNum=totalDays-daysLeft+1;
+    const members=(membersData||[]).filter(m=>m.accepted).map(m=>{
+      // Estimate progress — use weekly_minutes as proxy for challenge period
+      const progress=Math.min(m.weekly_minutes||0,goalMins);
+      return{...m,progress,pct:Math.min((progress/goalMins)*100,100)};
+    }).sort((a,b)=>b.progress-a.progress);
+    return{goalMins,daysLeft,dayNum,totalDays,members};
   };
 
   const searchFriend=async()=>{
@@ -1949,6 +2060,13 @@ export default function StudyGrove() {
         </div>
       )}
 
+      {/* ── GLOBAL XP POPUP ── */}
+      {taskXpPopup&&(
+        <div style={{position:"fixed",top:70,left:"50%",transform:"translateX(-50%)",background:"linear-gradient(135deg,#7c3aed,#a855f7)",color:"#fff",borderRadius:16,padding:"10px 24px",fontSize:14,fontWeight:700,zIndex:2000,animation:"slideIn 0.3s ease",whiteSpace:"nowrap",boxShadow:"0 4px 20px rgba(168,85,247,0.5)",textAlign:"center"}}>
+          {taskXpPopup}
+        </div>
+      )}
+
       {/* ── ONBOARDING ── */}
       {showOnboarding&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
@@ -2124,7 +2242,7 @@ export default function StudyGrove() {
       )}
 
       <div style={{display:"flex",gap:4,padding:"10px 16px",overflowX:"auto",borderBottom:`1px solid ${T.border}`,background:T.surface,position:"sticky",top:57,zIndex:99}}>
-        {[["study","⏱ Study"],["social","👥 Social"],["leaderboard","🏆 Ranks"],["stats","📊 Stats"],["challenges","⚔️ Challenges"],["planner","📅 Planner"],["achievements","🎖 Badges"],["settings","⚙️ Settings"]].map(([t,l])=>(
+        {[["study","⏱ Study"],["social","👥 Social"],["leaderboard","👤 Profile"],["stats","📊 Stats"],["challenges","⚔️ Challenges"],["planner","📅 Planner"],["achievements","🎖 Badges"],["settings","⚙️ Settings"]].map(([t,l])=>(
           <button key={t} style={css.tBtn(tab===t)} onClick={()=>setTab(t)}>{l}</button>
         ))}
       </div>
@@ -2224,13 +2342,6 @@ export default function StudyGrove() {
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1a1a1a",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 14px",marginBottom:12}}>
                   <span style={{fontSize:13,color:T.sub}}>Task deleted</span>
                   <button onClick={undoDelete} style={{...css.btnO,padding:"4px 14px",fontSize:12,color:T.accent,borderColor:T.accent}}>↩ Undo (5s)</button>
-                </div>
-              )}
-
-              {/* XP popup */}
-              {taskXpPopup&&(
-                <div style={{position:"absolute",top:-20,right:20,background:"#a855f7",color:"#fff",borderRadius:20,padding:"4px 14px",fontSize:13,fontWeight:700,zIndex:10,animation:"slideIn 0.3s ease"}}>
-                  {taskXpPopup} ✓
                 </div>
               )}
 
@@ -2488,54 +2599,164 @@ export default function StudyGrove() {
 
         {tab==="leaderboard"&&(
           <div>
-            <div style={{display:"flex",gap:8,marginBottom:16}}>
-              {["daily","weekly","monthly"].map(f=>(
-                <button key={f} style={css.tBtn(leaderboardFrame===f)} onClick={()=>setLeaderboardFrame(f)}>{f.charAt(0).toUpperCase()+f.slice(1)}</button>
-              ))}
-            </div>
-            {!group?(
-              <div style={{...css.card,textAlign:"center",padding:40}}>
-                <div style={{fontSize:48}}>🏆</div>
-                <div style={{fontWeight:700,fontSize:18,marginTop:12}}>Join a group to see rankings</div>
-                <div style={{color:T.sub,fontSize:13,marginTop:8,marginBottom:20}}>Compete with your study group on the leaderboard</div>
-                <button style={css.btn} onClick={()=>setTab("social")}>Go to Social</button>
-              </div>
-            ):(
-              leaderboard.length===0?(
-                <div style={{...css.card,textAlign:"center",padding:40}}>
-                  <div style={{fontSize:48}}>📊</div>
-                  <div style={{fontWeight:700,fontSize:18,marginTop:12}}>No data yet</div>
-                  <div style={{color:T.sub,fontSize:13,marginTop:8}}>Start studying to appear on the leaderboard!</div>
+            {/* ── MY PROFILE ── */}
+            {(()=>{
+              const lv=getXPProgress(stats.total_xp||0);
+              return(
+                <div style={{...css.card,marginBottom:16,background:`linear-gradient(135deg,${T.card},${T.accent}08)`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20}}>
+                    <div style={{cursor:"pointer"}} onClick={()=>setTab("settings")}>
+                      <FramedAvatar size={72} avatarUrl={avatarUrl} username={profile?.username} frameId={selectedFrame} unlockedFrames={unlockedFrames} isPro={isPro} accentColor={T.accent}/>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:900,fontSize:18}}>{profile?.username}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+                        <span style={{fontSize:13,color:"#a855f7",fontWeight:700}}>{lv.icon} Level {lv.level}</span>
+                        <span style={{fontSize:12,color:T.sub}}>· {lv.title}</span>
+                      </div>
+                      <div style={{fontSize:11,color:T.sub,marginTop:2}}>#{profile?.friend_code}</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:20,fontWeight:900,color:"#a855f7"}}>{stats.total_xp||0}</div>
+                      <div style={{fontSize:10,color:T.sub}}>Total XP</div>
+                    </div>
+                  </div>
+                  {/* XP Progress */}
+                  <div style={{marginBottom:16}}>
+                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.sub,marginBottom:5}}>
+                      <span style={{color:"#a855f7",fontWeight:600}}>{lv.title}</span>
+                      <span>{lv.next?`${lv.current} / ${lv.needed} XP to Level ${lv.level+1}`:"MAX LEVEL"}</span>
+                    </div>
+                    <div style={{height:8,background:T.border,borderRadius:4,overflow:"hidden"}}>
+                      <div style={{height:"100%",background:"linear-gradient(90deg,#7c3aed,#a855f7)",borderRadius:4,width:`${lv.progress}%`,transition:"width 0.5s"}}/>
+                    </div>
+                    {lv.next&&<div style={{fontSize:11,color:T.sub,marginTop:4}}>🎁 Next reward: {LEVEL_REWARDS[lv.level]}</div>}
+                  </div>
+                  {/* Quick stats */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,textAlign:"center"}}>
+                    {[
+                      {label:"Streak",val:`${stats.streak||0}🔥`},
+                      {label:"Total",val:fmtMins(stats.total_minutes||0)},
+                      {label:"Badges",val:`${(stats.achievements||[]).length}/${ACHIEVEMENTS.length}`},
+                      {label:"Tasks",val:stats.tasks_completed||0},
+                    ].map(s=>(
+                      <div key={s.label} style={{padding:"8px 4px",background:T.surface,borderRadius:8,border:`1px solid ${T.border}`}}>
+                        <div style={{fontSize:14,fontWeight:900,color:T.accent}}>{s.val}</div>
+                        <div style={{fontSize:10,color:T.sub,marginTop:2}}>{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ):(
-                <div style={css.card}>
-                  <div style={{fontWeight:700,marginBottom:16}}>🏆 {leaderboardFrame.charAt(0).toUpperCase()+leaderboardFrame.slice(1)} Rankings</div>
-                  {[...leaderboard].sort((a,b)=>{
-                    const key=leaderboardFrame==="daily"?"today_minutes":leaderboardFrame==="monthly"?"total_minutes":"weekly_minutes";
-                    return (b.stats?.[key]||0)-(a.stats?.[key]||0);
-                  }).map((m,i)=>{
-                    const key=leaderboardFrame==="daily"?"today_minutes":leaderboardFrame==="monthly"?"total_minutes":"weekly_minutes";
-                    const mins=m.stats?.[key]||0;
-                    const isMe=m.id===authUser?.id;
+              );
+            })()}
+
+            {/* ── FRIENDS MINI LEADERBOARD ── */}
+            {friends.length>0&&(
+              <div style={{...css.card,marginBottom:16}}>
+                <div style={{fontWeight:700,marginBottom:12}}>👥 Friends Ranking</div>
+                {[...friends,{id:authUser?.id,username:profile?.username,stats}]
+                  .sort((a,b)=>(b.stats?.total_xp||0)-(a.stats?.total_xp||0))
+                  .map((f,i)=>{
+                    const isMe=f.id===authUser?.id;
+                    const lv=getXPProgress(f.stats?.total_xp||0);
                     const medals=["🥇","🥈","🥉"];
                     return(
-                      <div key={m.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 0",borderBottom:`1px solid ${T.border}`,background:isMe?`${T.accent}08`:"transparent",borderRadius:isMe?8:0,padding:isMe?"12px 10px":"14px 0"}}>
-                        <div style={{fontSize:i<3?22:14,fontWeight:700,width:28,textAlign:"center",color:i<3?undefined:T.sub}}>{i<3?medals[i]:`#${i+1}`}</div>
-                        <div style={css.av()}>{(m.username||"?")[0].toUpperCase()}</div>
+                      <div key={f.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:`1px solid ${T.border}`,background:isMe?`${T.accent}08`:"transparent",borderRadius:isMe?8:0,padding:isMe?"8px 10px":"10px 0"}}>
+                        <div style={{fontSize:i<3?20:13,width:24,textAlign:"center",color:i<3?undefined:T.sub}}>{i<3?medals[i]:`#${i+1}`}</div>
+                        <div style={{width:32,height:32,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:12,color:"#000",flexShrink:0}}>
+                          {(f.username||"?")[0].toUpperCase()}
+                        </div>
                         <div style={{flex:1}}>
-                          <div style={{fontWeight:700,fontSize:14,color:isMe?T.accent:T.text}}>{m.username}{isMe?" (you)":""}</div>
-                          <div style={{fontSize:11,color:T.sub,marginTop:2}}>🔥 {m.stats?.streak||0} streak · <span style={{color:"#a855f7"}}>{getXPProgress(m.stats?.total_xp||0).icon} Lv.{getXPProgress(m.stats?.total_xp||0).level} {getXPProgress(m.stats?.total_xp||0).name}</span></div>
+                          <div style={{fontSize:13,fontWeight:700,color:isMe?T.accent:T.text}}>{f.username}{isMe?" (you)":""}</div>
+                          <div style={{fontSize:11,color:"#a855f7"}}>{lv.icon} Lv.{lv.level} {lv.title}</div>
                         </div>
                         <div style={{textAlign:"right"}}>
-                          <div style={{fontWeight:900,fontSize:16,color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":T.text}}>{fmtMins(mins)}</div>
-                          <div style={{fontSize:10,color:"#a855f7"}}>{m.stats?.total_minutes||0} XP total</div>
+                          <div style={{fontSize:13,fontWeight:700,color:"#a855f7"}}>{f.stats?.total_xp||0} XP</div>
+                          <div style={{fontSize:11,color:T.sub}}>{fmtMins(f.stats?.weekly_minutes||0)} this week</div>
                         </div>
                       </div>
                     );
                   })}
-                </div>
-              )
+              </div>
             )}
+
+            {/* ── GROUP LEADERBOARD ── */}
+            {group&&leaderboard.length>0&&(
+              <div style={{...css.card,marginBottom:16}}>
+                <div style={{fontWeight:700,marginBottom:4}}>🏆 Group: {group.name}</div>
+                <div style={{fontSize:11,color:T.sub,marginBottom:12}}>Weekly ranking</div>
+                {[...leaderboard].sort((a,b)=>(b.stats?.weekly_minutes||0)-(a.stats?.weekly_minutes||0)).map((m,i)=>{
+                  const isMe=m.id===authUser?.id;
+                  const medals=["🥇","🥈","🥉"];
+                  return(
+                    <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:`1px solid ${T.border}`}}>
+                      <div style={{fontSize:i<3?18:12,width:22,textAlign:"center"}}>{i<3?medals[i]:`#${i+1}`}</div>
+                      <div style={{width:30,height:30,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:11,color:"#000",flexShrink:0}}>
+                        {(m.username||"?")[0].toUpperCase()}
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:700,color:isMe?T.accent:T.text}}>{m.username}{isMe?" (you)":""}</div>
+                        <div style={{fontSize:11,color:T.sub}}>🔥 {m.stats?.streak||0} streak</div>
+                      </div>
+                      <div style={{fontSize:13,fontWeight:700,color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":T.text}}>{fmtMins(m.stats?.weekly_minutes||0)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── GLOBAL TOP 5 ── */}
+            <div style={css.card}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <div style={{fontWeight:700}}>🌍 Global Top</div>
+                <div style={{fontSize:11,color:T.sub}}>By total XP</div>
+              </div>
+              {globalTop.length===0&&<div style={{color:T.sub,fontSize:13}}>Loading...</div>}
+              {globalTop.map((u,i)=>{
+                const isMe=u.id===authUser?.id;
+                const lv=getXPProgress(u.stats?.total_xp||0);
+                const medals=["🥇","🥈","🥉"];
+                return(
+                  <div key={u.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:`1px solid ${T.border}`}}>
+                    <div style={{fontSize:i<3?18:12,width:22,textAlign:"center"}}>{i<3?medals[i]:`#${i+1}`}</div>
+                    <div style={{width:30,height:30,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:11,color:"#000",flexShrink:0,overflow:"hidden"}}>
+                      {u.avatar_url?<img src={u.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:(u.username||"?")[0].toUpperCase()}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:700,color:isMe?T.accent:T.text}}>{u.username}{isMe?" (you)":""}</div>
+                      <div style={{fontSize:11,color:"#a855f7"}}>{lv.icon} Lv.{lv.level} · {lv.title}</div>
+                    </div>
+                    <div style={{fontSize:13,fontWeight:700,color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":T.text}}>{u.stats?.total_xp||0} XP</div>
+                  </div>
+                );
+              })}
+              {!showFullGlobal?(
+                <button style={{...css.btnO,width:"100%",marginTop:12,fontSize:13}} onClick={()=>{setShowFullGlobal(true);loadFullGlobal();}}>
+                  🌍 See Full Global Leaderboard
+                </button>
+              ):(
+                globalLoading?<div style={{color:T.sub,fontSize:13,textAlign:"center",padding:16}}>Loading...</div>:(
+                  fullGlobal.map((u,i)=>{
+                    const isMe=u.id===authUser?.id;
+                    const lv=getXPProgress(u.stats?.total_xp||0);
+                    if(i<5)return null; // already shown above
+                    return(
+                      <div key={u.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:`1px solid ${T.border}`}}>
+                        <div style={{fontSize:12,width:22,color:T.sub,textAlign:"center"}}>#{i+1}</div>
+                        <div style={{width:28,height:28,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:11,color:"#000",flexShrink:0,overflow:"hidden"}}>
+                          {u.avatar_url?<img src={u.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:(u.username||"?")[0].toUpperCase()}
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:700,color:isMe?T.accent:T.text}}>{u.username}{isMe?" (you)":""}</div>
+                          <div style={{fontSize:11,color:"#a855f7"}}>{lv.icon} Lv.{lv.level}</div>
+                        </div>
+                        <div style={{fontSize:13,fontWeight:700,color:T.text}}>{u.stats?.total_xp||0} XP</div>
+                      </div>
+                    );
+                  })
+                )
+              )}
+            </div>
           </div>
         )}
 
@@ -2708,13 +2929,123 @@ export default function StudyGrove() {
 
         {tab==="challenges"&&(
           <div>
-            {/* XP popup */}
-            {taskXpPopup&&(
-              <div style={{position:"fixed",top:80,left:"50%",transform:"translateX(-50%)",background:"#a855f7",color:"#fff",borderRadius:20,padding:"8px 20px",fontSize:14,fontWeight:700,zIndex:1000,animation:"slideIn 0.3s ease",whiteSpace:"nowrap"}}>
-                {taskXpPopup}
+            {/* Tab switcher */}
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              {[["daily","☀️ Daily"],["weekly","📅 Weekly"],["social","⚔️ Social"]].map(([k,l])=>(
+                <button key={k} style={css.tBtn(challengeTab===k)} onClick={()=>setChallengeTab(k)}>{l}</button>
+              ))}
+            </div>
+
+            {/* Create Challenge Modal */}
+            {showCreateChallenge&&(
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+                <div style={{...css.card,width:"100%",maxWidth:420}}>
+                  <div style={{fontWeight:800,fontSize:16,marginBottom:16}}>⚔️ Create Challenge</div>
+                  {challengeFormError&&<div style={{color:"#ff6b6b",fontSize:12,marginBottom:10}}>{challengeFormError}</div>}
+                  <input style={{...css.input,marginBottom:10}} placeholder='Title (e.g. "Study 10h in 7 days")' value={challengeForm.title} onChange={e=>setChallengeForm(p=>({...p,title:e.target.value}))}/>
+                  <div style={{display:"flex",gap:8,marginBottom:10}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11,color:T.sub,marginBottom:4}}>Goal (hours)</div>
+                      <input style={css.input} type="number" min="1" max="1000" value={challengeForm.goalHours} onChange={e=>setChallengeForm(p=>({...p,goalHours:e.target.value}))}/>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11,color:T.sub,marginBottom:4}}>Duration (days)</div>
+                      <input style={css.input} type="number" min="1" max="365" value={challengeForm.durationDays} onChange={e=>setChallengeForm(p=>({...p,durationDays:e.target.value}))}/>
+                    </div>
+                  </div>
+                  <input style={{...css.input,marginBottom:16}} placeholder="Invite friend by code (optional)" value={challengeForm.friendCode} onChange={e=>setChallengeForm(p=>({...p,friendCode:e.target.value}))}/>
+                  <div style={{display:"flex",gap:8}}>
+                    <button style={{...css.btn,flex:1}} onClick={createSocialChallenge}>Create Challenge</button>
+                    <button style={{...css.btnO}} onClick={()=>{setShowCreateChallenge(false);setChallengeFormError("");}}>Cancel</button>
+                  </div>
+                </div>
               </div>
             )}
 
+            {challengeTab==="social"&&(
+              <div>
+                {/* Pending invites */}
+                {socialChallenges.filter(c=>!((myChallengeMembers[c.id]||[]).find(m=>m.user_id===authUser?.id)?.accepted)).map(c=>(
+                  <div key={c.id} style={{...css.card,border:`1.5px solid #f59e0b`,marginBottom:12}}>
+                    <div style={{fontSize:11,color:"#f59e0b",fontWeight:700,marginBottom:4}}>📬 Challenge Invite</div>
+                    <div style={{fontWeight:700,fontSize:15,marginBottom:4}}>{c.title}</div>
+                    <div style={{fontSize:12,color:T.sub,marginBottom:12}}>Goal: {c.goal_hours}h in {c.duration_days} days</div>
+                    <div style={{display:"flex",gap:8}}>
+                      <button style={{...css.btn,flex:1}} onClick={()=>acceptSocialChallenge(c.id)}>✅ Accept</button>
+                      <button style={{...css.btnD}} onClick={()=>declineSocialChallenge(c.id)}>Decline</button>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Active challenges */}
+                {socialChallenges.filter(c=>(myChallengeMembers[c.id]||[]).find(m=>m.user_id===authUser?.id)?.accepted).map(c=>{
+                  const{goalMins,daysLeft,dayNum,totalDays,members}=getSocialChallengeProgress(c,myChallengeMembers[c.id]);
+                  const topProgress=members[0]?.progress||1;
+                  return(
+                    <div key={c.id} style={{...css.card,marginBottom:12}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+                        <div style={{fontWeight:700,fontSize:15}}>{c.title}</div>
+                        <div style={{fontSize:11,color:T.sub}}>Day {dayNum} of {totalDays}</div>
+                      </div>
+                      <div style={{fontSize:12,color:T.sub,marginBottom:16}}>Goal: {c.goal_hours}h in {c.duration_days} days · {daysLeft} days left</div>
+
+                      {/* Progress bar with avatars */}
+                      <div style={{position:"relative",height:28,marginBottom:16}}>
+                        <div style={{position:"absolute",top:"50%",transform:"translateY(-50%)",left:0,right:0,height:8,background:T.border,borderRadius:4}}/>
+                        {members.map((m,i)=>{
+                          const pct=Math.min((m.progress/goalMins)*100,100);
+                          const colors=["#00e676","#f59e0b","#ef4444","#6366f1","#a855f7"];
+                          const col=colors[i%colors.length];
+                          return(
+                            <div key={m.user_id} style={{position:"absolute",top:"50%",transform:"translateY(-50%)",left:0,right:0,height:8,background:"transparent"}}>
+                              {/* Progress fill */}
+                              <div style={{position:"absolute",left:0,top:0,height:8,background:col,borderRadius:4,width:`${pct}%`,opacity:0.5}}/>
+                              {/* Avatar dot at progress point */}
+                              <div title={`${m.username}: ${fmtMins(m.progress)}`} style={{position:"absolute",left:`calc(${pct}% - 14px)`,top:"50%",transform:"translateY(-50%)",width:28,height:28,borderRadius:"50%",background:col,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#000",border:`2px solid ${T.bg}`,zIndex:i+1,overflow:"hidden"}}>
+                                {m.avatar_url?<img src={m.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:(m.username||"?")[0].toUpperCase()}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {/* Goal marker */}
+                        <div style={{position:"absolute",right:0,top:-4,width:3,height:24,background:T.accent,borderRadius:2}}/>
+                        <div style={{position:"absolute",right:4,top:-16,fontSize:10,color:T.accent,fontWeight:700}}>{c.goal_hours}h</div>
+                      </div>
+
+                      {/* Leaderboard */}
+                      {members.map((m,i)=>(
+                        <div key={m.user_id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.border}`}}>
+                          <div style={{width:20,fontSize:13,fontWeight:700,color:i===0?"#ffd700":i===1?"#c0c0c0":i===2?"#cd7f32":T.sub,textAlign:"center"}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}</div>
+                          <div style={{width:28,height:28,borderRadius:"50%",background:T.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:"#000",overflow:"hidden",flexShrink:0}}>
+                            {m.avatar_url?<img src={m.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:(m.username||"?")[0].toUpperCase()}
+                          </div>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:13,fontWeight:600}}>{m.username}{m.user_id===authUser?.id?" (you)":""}</div>
+                            <div style={{height:4,background:T.border,borderRadius:2,marginTop:3}}>
+                              <div style={{height:"100%",background:T.accent,borderRadius:2,width:`${m.pct}%`,transition:"width 0.5s"}}/>
+                            </div>
+                          </div>
+                          <div style={{fontSize:12,fontWeight:700,color:T.accent}}>{fmtMins(m.progress)} / {fmtMins(goalMins)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+
+                {socialChallenges.length===0&&(
+                  <div style={{...css.card,textAlign:"center",padding:40}}>
+                    <div style={{fontSize:48}}>⚔️</div>
+                    <div style={{fontWeight:700,fontSize:18,marginTop:12}}>No challenges yet</div>
+                    <div style={{color:T.sub,fontSize:13,marginTop:8,marginBottom:20}}>Create one and challenge your friends to see who studies more</div>
+                  </div>
+                )}
+
+                <button style={{...css.btn,width:"100%",padding:14,fontSize:15,marginTop:8}} onClick={()=>setShowCreateChallenge(true)}>+ Create Challenge</button>
+              </div>
+            )}
+
+            {challengeTab==="daily"&&(
+            <div>
             {/* Daily Challenges */}
             <div style={css.card}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
@@ -2757,7 +3088,11 @@ export default function StudyGrove() {
                 })}
               </div>
             </div>
+            </div>
+            )}
 
+            {challengeTab==="weekly"&&(
+            <div>
             {/* Weekly Challenges */}
             <div style={css.card}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
@@ -2821,6 +3156,8 @@ export default function StudyGrove() {
                 </div>
               </div>
             </div>
+            </div>
+            )}
           </div>
         )}
 
