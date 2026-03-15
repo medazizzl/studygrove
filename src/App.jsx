@@ -190,6 +190,20 @@ const QUOTES = {
   Informatics: ["Code is just logic made visible.", "Every bug is a lesson in disguise.", "Debug your mind, then your code."],
 };
 
+
+const SUBJECT_COLORS = {
+  "Math":       "#3b82f6",
+  "Physics":    "#f97316",
+  "Chemistry":  "#a855f7",
+  "SVT":        "#22c55e",
+  "French":     "#ec4899",
+  "English":    "#6366f1",
+  "Arabic":     "#eab308",
+  "Philosophy": "#14b8a6",
+  "Informatics":"#06b6d4",
+};
+const getSubjectColor=(subject)=>SUBJECT_COLORS[subject]||"#6ee7b7";
+
 // ── FRAMES ───────────────────────────────────────────────────────────────────
 const FRAMES = {
   // Free
@@ -415,6 +429,11 @@ export default function StudyGrove() {
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
   const [newTaskSubject, setNewTaskSubject] = useState("Math");
+  const [newTaskDifficulty, setNewTaskDifficulty] = useState("");
+  const [newTaskTime, setNewTaskTime] = useState("");
+  const [showTaskForm, setShowTaskForm] = useState(false);
+  const [taskXpPopup, setTaskXpPopup] = useState(null);
+  const [completedExpanded, setCompletedExpanded] = useState(false);
   const [friends, setFriends] = useState([]);
   const [friendRequests, setFriendRequests] = useState([]);
   const [friendSearch, setFriendSearch] = useState("");
@@ -1206,9 +1225,10 @@ export default function StudyGrove() {
 
   const addTask=async()=>{
     if(!newTask.trim())return;
-    const{data}=await supabase.from("tasks").insert({user_id:authUser.id,text:newTask,subject:newTaskSubject,done:false,created_at:new Date().toISOString()}).select().single();
+    const task={user_id:authUser.id,text:newTask.trim(),subject:newTaskSubject,difficulty:newTaskDifficulty||null,estimate:newTaskTime||null,done:false,created_at:new Date().toISOString()};
+    const{data}=await supabase.from("tasks").insert(task).select().single();
     if(data)setTasks(prev=>[data,...prev]);
-    setNewTask("");
+    setNewTask("");setNewTaskDifficulty("");setNewTaskTime("");setShowTaskForm(false);
   };
 
   const toggleTask=async(task)=>{
@@ -1220,6 +1240,20 @@ export default function StudyGrove() {
       let ach=ns.achievements||[];
       if(ns.tasks_completed>=10)ach=unlockAchievement("task_slayer",ach);
       if(ns.tasks_completed>=50)ach=unlockAchievement("task_master",ach);
+      // XP for task — 5 XP, anti-cheat: track by task ID, cap 50/day
+      const todayStr=new Date().toISOString().slice(0,10);
+      const taskXpKey=`task_xp_${todayStr}`;
+      const taskIdKey=`completed_tasks_${todayStr}`;
+      const completedToday=JSON.parse(localStorage.getItem(taskIdKey)||"[]");
+      if(!completedToday.includes(task.id) && (ns[taskXpKey]||0)<50){
+        const xpGain=5;
+        ns.total_xp=(ns.total_xp||0)+xpGain;
+        ns[taskXpKey]=(ns[taskXpKey]||0)+xpGain;
+        completedToday.push(task.id);
+        localStorage.setItem(taskIdKey,JSON.stringify(completedToday));
+        setTaskXpPopup(`+${xpGain} XP`);
+        setTimeout(()=>setTaskXpPopup(null),2000);
+      }
       ns.achievements=ach;
       await saveStats(ns);
     }
@@ -2019,26 +2053,106 @@ export default function StudyGrove() {
               </div>
             </div>
 
-            <div style={{...css.card,gridColumn:"1/-1"}}>
-              <div style={{fontWeight:700,marginBottom:12}}>✅ Tasks <span style={{fontWeight:400,fontSize:12,color:T.sub}}>({tasks.filter(t=>!t.done).length} remaining)</span></div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-                <input style={{...css.input,flex:1,minWidth:160}} placeholder="Add a task..." value={newTask} onChange={e=>setNewTask(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addTask()}/>
-                <select style={{...css.input,width:130}} value={newTaskSubject} onChange={e=>setNewTaskSubject(e.target.value)}>
-                  {subjects.map(s=><option key={s} value={s}>{s}</option>)}
-                </select>
-                <button style={css.btn} onClick={addTask}>Add</button>
-              </div>
-              {tasks.length===0&&<div style={{color:T.sub,fontSize:13}}>No tasks yet — add something to study!</div>}
-              {tasks.map(t=>(
-                <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:`1px solid ${T.border}`}}>
-                  <button onClick={()=>toggleTask(t)} style={{width:22,height:22,borderRadius:6,border:`2px solid ${t.done?T.accent:T.border}`,background:t.done?T.accent:"transparent",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    {t.done&&<span style={{color:"#000",fontSize:12,fontWeight:900}}>✓</span>}
-                  </button>
-                  <span style={{flex:1,fontSize:13,textDecoration:t.done?"line-through":"none",color:t.done?T.sub:T.text}}>{t.text}</span>
-                  <span style={{fontSize:11,color:T.accent,padding:"2px 8px",background:`${T.accent}18`,borderRadius:20}}>{t.subject}</span>
-                  <button onClick={()=>deleteTask(t.id)} style={{background:"transparent",border:"none",color:T.sub,cursor:"pointer",fontSize:18,lineHeight:1}}>×</button>
+            <div style={{...css.card,gridColumn:"1/-1",position:"relative"}}>
+              {/* XP popup */}
+              {taskXpPopup&&(
+                <div style={{position:"absolute",top:-20,right:20,background:"#a855f7",color:"#fff",borderRadius:20,padding:"4px 14px",fontSize:13,fontWeight:700,zIndex:10,animation:"slideIn 0.3s ease"}}>
+                  {taskXpPopup} ✓
                 </div>
-              ))}
+              )}
+
+              {/* Header + progress */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
+                <div style={{fontWeight:700,fontSize:15}}>✅ Tasks</div>
+                <div style={{fontSize:12,color:T.sub}}>{tasks.filter(t=>t.done).length} / {tasks.length} completed</div>
+              </div>
+              {tasks.length>0&&(
+                <div style={{marginBottom:16}}>
+                  <div style={{height:6,background:T.border,borderRadius:3,overflow:"hidden"}}>
+                    <div style={{height:"100%",background:T.accent,borderRadius:3,width:`${(tasks.filter(t=>t.done).length/tasks.length)*100}%`,transition:"width 0.5s"}}/>
+                  </div>
+                </div>
+              )}
+
+              {/* Add task form */}
+              {showTaskForm?(
+                <div style={{background:T.surface,borderRadius:12,padding:16,marginBottom:16,border:`1px solid ${T.border}`}}>
+                  <input style={{...css.input,marginBottom:10}} placeholder="Task title *" value={newTask} onChange={e=>setNewTask(e.target.value)} autoFocus onKeyDown={e=>e.key==="Enter"&&addTask()}/>
+                  <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
+                    <select style={{...css.input,flex:1,minWidth:120}} value={newTaskSubject} onChange={e=>setNewTaskSubject(e.target.value)}>
+                      {subjects.map(s=><option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <select style={{...css.input,flex:1,minWidth:100}} value={newTaskDifficulty} onChange={e=>setNewTaskDifficulty(e.target.value)}>
+                      <option value="">Difficulty (optional)</option>
+                      <option value="Easy">Easy</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Hard">Hard 🔥</option>
+                    </select>
+                    <input style={{...css.input,flex:1,minWidth:100}} placeholder="Time (e.g. 30 min)" value={newTaskTime} onChange={e=>setNewTaskTime(e.target.value)}/>
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button style={{...css.btn,flex:1}} onClick={addTask}>Add Task</button>
+                    <button style={{...css.btnO}} onClick={()=>{setShowTaskForm(false);setNewTask("");setNewTaskDifficulty("");setNewTaskTime("");}}>Cancel</button>
+                  </div>
+                </div>
+              ):(
+                <button style={{...css.btn,width:"100%",marginBottom:16,padding:12,fontSize:14,borderRadius:12}} onClick={()=>setShowTaskForm(true)}>+ Add Task</button>
+              )}
+
+              {/* Active tasks grouped by subject */}
+              {(()=>{
+                const active=tasks.filter(t=>!t.done);
+                if(active.length===0&&tasks.filter(t=>t.done).length===0) return <div style={{color:T.sub,fontSize:13,textAlign:"center",padding:"20px 0"}}>No tasks yet — hit + Add Task to get started!</div>;
+                if(active.length===0) return null;
+                const grouped={};
+                active.forEach(t=>{if(!grouped[t.subject])grouped[t.subject]=[];grouped[t.subject].push(t);});
+                return Object.entries(grouped).map(([subject,stasks])=>{
+                  const col=getSubjectColor(subject);
+                  return(
+                    <div key={subject} style={{marginBottom:16}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                        <div style={{width:10,height:10,borderRadius:"50%",background:col,flexShrink:0}}/>
+                        <span style={{fontWeight:700,fontSize:13,color:col}}>{subject}</span>
+                        <span style={{fontSize:11,color:T.sub}}>({stasks.length})</span>
+                      </div>
+                      {stasks.map(t=>(
+                        <div key={t.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 12px",marginBottom:6,borderRadius:10,background:T.surface,border:`1px solid ${T.border}`,borderLeft:`3px solid ${col}`,transition:"all 0.2s"}}>
+                          <button onClick={()=>toggleTask(t)} style={{width:20,height:20,borderRadius:5,border:`2px solid ${col}`,background:"transparent",cursor:"pointer",flexShrink:0,marginTop:2,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            {t.done&&<span style={{color:col,fontSize:11,fontWeight:900}}>✓</span>}
+                          </button>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:14,fontWeight:600,color:T.text}}>{t.text}</div>
+                            <div style={{display:"flex",gap:8,marginTop:4,flexWrap:"wrap"}}>
+                              {t.difficulty&&<span style={{fontSize:11,color:t.difficulty==="Hard"?"#ff6d00":t.difficulty==="Medium"?"#f59e0b":"#22c55e",fontWeight:600}}>{t.difficulty==="Hard"?"🔥":""}  {t.difficulty}</span>}
+                              {t.estimate&&<span style={{fontSize:11,color:T.sub}}>⏱ {t.estimate}</span>}
+                            </div>
+                          </div>
+                          <button onClick={()=>deleteTask(t.id)} style={{background:"transparent",border:"none",color:T.sub,cursor:"pointer",fontSize:16,lineHeight:1,flexShrink:0}}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                });
+              })()}
+
+              {/* Completed section */}
+              {tasks.filter(t=>t.done).length>0&&(
+                <div style={{borderTop:`1px solid ${T.border}`,paddingTop:12,marginTop:4}}>
+                  <button onClick={()=>setCompletedExpanded(v=>!v)} style={{background:"transparent",border:"none",color:T.sub,cursor:"pointer",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:6,marginBottom:completedExpanded?12:0}}>
+                    {completedExpanded?"▼":"▶"} Completed ({tasks.filter(t=>t.done).length})
+                  </button>
+                  {completedExpanded&&tasks.filter(t=>t.done).map(t=>(
+                    <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",marginBottom:4,borderRadius:8,background:T.surface,opacity:0.6}}>
+                      <div style={{width:18,height:18,borderRadius:4,background:getSubjectColor(t.subject),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        <span style={{color:"#000",fontSize:10,fontWeight:900}}>✓</span>
+                      </div>
+                      <span style={{flex:1,fontSize:13,textDecoration:"line-through",color:T.sub}}>{t.text}</span>
+                      <span style={{fontSize:10,color:T.sub}}>{t.subject}</span>
+                      <button onClick={()=>deleteTask(t.id)} style={{background:"transparent",border:"none",color:T.sub,cursor:"pointer",fontSize:14}}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
