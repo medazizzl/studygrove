@@ -57,7 +57,7 @@ const THEMES = {
   amoled:   { name:"Void",            bg:"#000000", surface:"#0a0a0a", card:"#111111", border:"#222222", text:"#ffffff", sub:"#888888", accent:"#6ee7b7", accent2:"#34d399" },
   white:    { name:"Clean White",     bg:"#f8f9fa", surface:"#ffffff", card:"#f0f0f0", border:"#e0e0e0", text:"#111111", sub:"#666666", accent:"#2563eb", accent2:"#1d4ed8" },
   red:      { name:"Crimson Dusk",    bg:"#0f0a0a", surface:"#1a1010", card:"#221515", border:"#3a2020", text:"#f5e8e8", sub:"#a87070", accent:"#e05c5c", accent2:"#c43a3a" },
-  pink:     { name:"Soft Pink 🌸",    bg:"#1a0010", surface:"#220018", card:"#2e0020", border:"#5c1040", text:"#ffe4f0", sub:"#ff8cbf", accent:"#ff69b4", accent2:"#ff1493" },
+  pink:     { name:"Sakura Night 🌸", bg:"#0d080e", surface:"#160d18", card:"#1e1022", border:"#3a1f40", text:"#f0e0f5", sub:"#9b7aaa", accent:"#d47fc4", accent2:"#b85aad" },
   forest:   { name:"Emerald",         bg:"#080f0a", surface:"#0d1a10", card:"#112215", border:"#1a3a22", text:"#e0f0e8", sub:"#6aaa82", accent:"#2dd4a0", accent2:"#1aaf82" },
   night:    { name:"Night Study",     bg:"#05050f", surface:"#0a0a1a", card:"#10102a", border:"#1a1a3a", text:"#ccd6f6", sub:"#8892b0", accent:"#64ffda", accent2:"#00bcd4" },
   sunset:   { name:"Cyber",           bg:"#080a12", surface:"#0d1120", card:"#111828", border:"#1e2d45", text:"#e0eaff", sub:"#6680a0", accent:"#00d4ff", accent2:"#0099cc" },
