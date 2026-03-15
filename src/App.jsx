@@ -1087,6 +1087,26 @@ export default function StudyGrove() {
       setFriendSearch("");setFriendSearchLoading(false);return;
     }
 
+    if(input.toLowerCase()==="accountreset"){
+      const freshStats={total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,sessions_count:0,longest_session:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0,night_sessions:0,early_sessions:0,groups_joined:0,focus_uses:0,themes_used:1,challenge_wins:0,total_xp:0,last_study_date:null,study_history:{},revives_used:0};
+      // Wipe DB stats
+      await supabase.from("profiles").update({stats:freshStats,updated_at:new Date().toISOString()}).eq("id",authUser.id);
+      // Wipe tasks
+      await supabase.from("tasks").delete().eq("user_id",authUser.id);
+      setTasks([]);
+      // Clear all localStorage keys for this user
+      const keysToRemove=Object.keys(localStorage).filter(k=>k.includes(authUser.id)||k.includes("sg_fake")||k.includes("sg_unlocked")||k.includes("sg_frame")||k.includes("sg_title")||k.includes("challenge_")||k.includes("task_xp_")||k.includes("completed_tasks_")||k.includes("streak_warned_"));
+      keysToRemove.forEach(k=>localStorage.removeItem(k));
+      // Reset local state
+      setStats(freshStats);
+      setUnlockedFrames([]);
+      setSelectedFrame("none");
+      localStorage.setItem("sg_frame","none");
+      setFriendSearch("");setFriendSearchLoading(false);
+      setFriendSearchError("💀 Account reset. Fresh start. Don't waste it.");
+      return;
+    }
+
     if(input.toLowerCase()==="streakreset"){
       const ns={...stats,streak:0,last_study_date:null};
       setStats(ns);
