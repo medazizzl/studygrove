@@ -202,7 +202,19 @@ const SUBJECT_COLORS = {
   "Philosophy": "#14b8a6",
   "Informatics":"#06b6d4",
 };
+const SUBJECT_ICONS = {
+  "Math":       "📘",
+  "Physics":    "⚡",
+  "Chemistry":  "🧪",
+  "SVT":        "🧬",
+  "French":     "🇫🇷",
+  "English":    "🇬🇧",
+  "Arabic":     "📖",
+  "Philosophy": "🤔",
+  "Informatics":"🖥️",
+};
 const getSubjectColor=(subject)=>SUBJECT_COLORS[subject]||"#6ee7b7";
+const getSubjectIcon=(subject)=>SUBJECT_ICONS[subject]||"📚";
 
 // ── FRAMES ───────────────────────────────────────────────────────────────────
 const FRAMES = {
@@ -1511,7 +1523,30 @@ export default function StudyGrove() {
     }).length;
     const subjectMins=stats.subject_minutes||{};
     const topSubject=Object.entries(subjectMins).sort((a,b)=>b[1]-a[1])[0]?.[0]||"None";
-    return{totalMins,daysStudied,tasksDone,topSubject,streak:stats.streak||0};
+
+    // Last week comparison
+    let lastWeekMins=0;
+    for(let i=7;i<14;i++){
+      const d=new Date();d.setDate(d.getDate()-i);
+      const key=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+      lastWeekMins+=(stats.study_history?.[key]||0);
+    }
+    let comparison="";
+    if(lastWeekMins===0&&totalMins>0) comparison="🆕 First week with data — great start!";
+    else if(lastWeekMins===0) comparison="No study data yet — this week is your chance.";
+    else{
+      const diff=totalMins-lastWeekMins;
+      const pct=Math.round(Math.abs(diff/lastWeekMins)*100);
+      if(diff>0) comparison=`📈 You studied ${pct}% more than last week!`;
+      else if(diff<0) comparison=`📉 You studied ${pct}% less than last week.`;
+      else comparison="➡️ Same as last week. Time to push harder!";
+    }
+    // Streak message
+    let streakMsg="";
+    if(daysStudied===7) streakMsg="🏆 Perfect week — you studied every single day!";
+    else if(daysStudied>=5) streakMsg="💪 You kept your streak alive all week.";
+
+    return{totalMins,lastWeekMins,daysStudied,tasksDone,topSubject,streak:stats.streak||0,comparison,streakMsg};
   })();
 
   const pomPct=((25*60-pomodoroSecs)/(25*60))*100;
@@ -1747,10 +1782,12 @@ export default function StudyGrove() {
       {/* Weekly Report Modal */}
       {showWeeklyReport&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-          <div style={{...css.card,maxWidth:400,width:"100%",textAlign:"center",padding:32}}>
-            <div style={{fontSize:36,marginBottom:8}}>📊</div>
-            <div style={{fontWeight:900,fontSize:20,marginBottom:4}}>Weekly Study Report</div>
-            <div style={{fontSize:12,color:T.sub,marginBottom:24}}>Last 7 days</div>
+          <div style={{...css.card,maxWidth:400,width:"100%",padding:32}}>
+            <div style={{textAlign:"center",marginBottom:20}}>
+              <div style={{fontSize:36}}>📊</div>
+              <div style={{fontWeight:900,fontSize:20,marginTop:8}}>Weekly Study Report</div>
+              <div style={{fontSize:12,color:T.sub,marginTop:4}}>Last 7 days</div>
+            </div>
             {[
               {icon:"⏱",label:"Time studied",val:fmtMins(weeklyReport.totalMins)},
               {icon:"📅",label:"Days studied",val:`${weeklyReport.daysStudied} / 7`},
@@ -1758,14 +1795,25 @@ export default function StudyGrove() {
               {icon:"🔥",label:"Current streak",val:`${weeklyReport.streak} days`},
               {icon:"📘",label:"Top subject",val:weeklyReport.topSubject},
             ].map(r=>(
-              <div key={r.label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:`1px solid ${T.border}`}}>
+              <div key={r.label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"11px 0",borderBottom:`1px solid ${T.border}`}}>
                 <span style={{fontSize:14,color:T.sub}}>{r.icon} {r.label}</span>
                 <strong style={{fontSize:15,color:T.accent}}>{r.val}</strong>
               </div>
             ))}
-            <div style={{marginTop:20,padding:"12px 16px",background:`${T.accent}12`,borderRadius:10,fontSize:13,color:T.accent}}>
-              {weeklyReport.totalMins>=300?"🔥 Great week! Keep the momentum going.":weeklyReport.totalMins>=60?"💪 Decent week. Push a little harder next time.":"📖 Slow week. Every session counts — start tomorrow."}
+            {/* Comparison vs last week */}
+            <div style={{marginTop:16,padding:"12px 16px",background:`${T.accent}12`,borderRadius:10,fontSize:13,color:T.accent,fontWeight:600}}>
+              {weeklyReport.comparison}
             </div>
+            {weeklyReport.streakMsg&&(
+              <div style={{marginTop:8,padding:"10px 16px",background:"#ffd60018",borderRadius:10,fontSize:13,color:"#ffd600"}}>
+                {weeklyReport.streakMsg}
+              </div>
+            )}
+            {!weeklyReport.streakMsg&&(
+              <div style={{marginTop:8,padding:"10px 16px",background:T.surface,borderRadius:10,fontSize:13,color:T.sub}}>
+                {weeklyReport.totalMins>=300?"🔥 Great week! Keep the momentum going.":weeklyReport.totalMins>=60?"💪 Decent week. Push harder next time.":"📖 Every session counts — start strong next week."}
+              </div>
+            )}
             <button style={{...css.btn,width:"100%",marginTop:20}} onClick={()=>setShowWeeklyReport(false)}>Close</button>
           </div>
         </div>
@@ -2180,7 +2228,7 @@ export default function StudyGrove() {
                   return(
                     <div key={subject} style={{marginBottom:16}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                        <div style={{width:10,height:10,borderRadius:"50%",background:col,flexShrink:0}}/>
+                        <span style={{fontSize:16}}>{getSubjectIcon(subject)}</span>
                         <span style={{fontWeight:700,fontSize:13,color:col}}>{subject}</span>
                         <span style={{fontSize:11,color:T.sub}}>({stasks.length})</span>
                       </div>
