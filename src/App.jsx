@@ -637,7 +637,9 @@ export default function StudyGrove() {
 
   const checkFrameUnlocks=(ns)=>{
     const ach=ns.achievements||[];
-    const frames=[...unlockedFrames];
+    // Always rebuild from scratch based on achievements — don't rely on stale state
+    const currentFrames=JSON.parse(localStorage.getItem("sg_unlocked_frames")||"[]");
+    const frames=[...currentFrames];
     let changed=false;
     if(ach.includes("first_step")&&!frames.includes("sprout")){frames.push("sprout");changed=true;}
     if((ns.streak||0)>=7&&!frames.includes("flame")){frames.push("flame");changed=true;}
@@ -1055,7 +1057,7 @@ export default function StudyGrove() {
 
     // Dev cheat — unlock all free frames
     if(input==="12252006"){
-      if(devCheatUsed){
+      if(devCheatUsed&&unlockedFrames.length>0){
         setFriendSearchError("bro you already took everything, what do you want, my kidneys too? 🫀");
         setFriendSearch("");setFriendSearchLoading(false);return;
       }
@@ -1074,6 +1076,8 @@ export default function StudyGrove() {
       const allFrames=Object.values(FRAMES).map(f=>f.id);
       setUnlockedFrames(allFrames);
       localStorage.setItem("sg_unlocked_frames",JSON.stringify(allFrames));
+      setDevCheatUsed(true);
+      localStorage.setItem("sg_dev_cheat","true");
       setFriendSearch("");setFriendSearchLoading(false);
       setFriendSearchError("👑 Pro frames unlocked. You didn't see anything. 🤫");
       return;
@@ -1089,18 +1093,15 @@ export default function StudyGrove() {
 
     if(input.toLowerCase()==="accountreset"){
       const freshStats={total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,sessions_count:0,longest_session:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0,night_sessions:0,early_sessions:0,groups_joined:0,focus_uses:0,themes_used:1,challenge_wins:0,total_xp:0,last_study_date:null,study_history:{},revives_used:0};
-      // Wipe DB stats
       await supabase.from("profiles").update({stats:freshStats,updated_at:new Date().toISOString()}).eq("id",authUser.id);
-      // Wipe tasks
       await supabase.from("tasks").delete().eq("user_id",authUser.id);
       setTasks([]);
-      // Clear all localStorage keys for this user
-      const keysToRemove=Object.keys(localStorage).filter(k=>k.includes(authUser.id)||k.includes("sg_fake")||k.includes("sg_unlocked")||k.includes("sg_frame")||k.includes("sg_title")||k.includes("challenge_")||k.includes("task_xp_")||k.includes("completed_tasks_")||k.includes("streak_warned_"));
+      const keysToRemove=Object.keys(localStorage).filter(k=>k.includes(authUser.id)||k.includes("sg_fake")||k.includes("sg_unlocked")||k.includes("sg_frame")||k.includes("sg_title")||k.includes("challenge_")||k.includes("task_xp_")||k.includes("completed_tasks_")||k.includes("streak_warned_")||k==="sg_dev_cheat");
       keysToRemove.forEach(k=>localStorage.removeItem(k));
-      // Reset local state
       setStats(freshStats);
       setUnlockedFrames([]);
       setSelectedFrame("none");
+      setDevCheatUsed(false);
       localStorage.setItem("sg_frame","none");
       setFriendSearch("");setFriendSearchLoading(false);
       setFriendSearchError("💀 Account reset. Fresh start. Don't waste it.");
