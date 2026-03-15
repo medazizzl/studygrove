@@ -426,6 +426,7 @@ export default function StudyGrove() {
   const [profileTitle, setProfileTitle] = useState(()=>localStorage.getItem("sg_title")||"");
   const [currentQuote, setCurrentQuote] = useState("");
   const [showProModal, setShowProModal] = useState(false);
+  const [showWeeklyReport, setShowWeeklyReport] = useState(false);
   const [tasks, setTasks] = useState([]);
   const [newTask, setNewTask] = useState("");
   const [newTaskSubject, setNewTaskSubject] = useState("Math");
@@ -433,6 +434,7 @@ export default function StudyGrove() {
   const [newTaskTime, setNewTaskTime] = useState("");
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskXpPopup, setTaskXpPopup] = useState(null);
+  const [pendingDelete, setPendingDelete] = useState(null); // {id, task, timer}
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [friends, setFriends] = useState([]);
   const [friendRequests, setFriendRequests] = useState([]);
@@ -1259,9 +1261,26 @@ export default function StudyGrove() {
     }
   };
 
-  const deleteTask=async(id)=>{
-    await supabase.from("tasks").delete().eq("id",id);
+  const deleteTask=(id)=>{
+    const task=tasks.find(t=>t.id===id);
+    if(!task)return;
+    // Remove from UI immediately
     setTasks(prev=>prev.filter(t=>t.id!==id));
+    // Cancel any existing pending delete
+    if(pendingDelete?.timer) clearTimeout(pendingDelete.timer);
+    // Set 5s undo window
+    const timer=setTimeout(async()=>{
+      await supabase.from("tasks").delete().eq("id",id);
+      setPendingDelete(null);
+    },5000);
+    setPendingDelete({id,task,timer});
+  };
+
+  const undoDelete=()=>{
+    if(!pendingDelete)return;
+    clearTimeout(pendingDelete.timer);
+    setTasks(prev=>[pendingDelete.task,...prev].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)));
+    setPendingDelete(null);
   };
 
   const handleTheme=async(t)=>{
@@ -1479,6 +1498,21 @@ export default function StudyGrove() {
     if(pct < 0.9)  return "#84cc16"; // good — yellow-green
     return "#22c55e";                // great — full green
   };
+
+  // Weekly report data
+  const weeklyReport=(()=>{
+    const totalMins=weeklyBarData.reduce((a,d)=>a+d.mins,0);
+    const daysStudied=weeklyBarData.filter(d=>d.mins>0).length;
+    const tasksDone=tasks.filter(t=>{
+      if(!t.done||!t.created_at)return false;
+      const d=new Date(t.created_at);
+      const weekAgo=new Date();weekAgo.setDate(weekAgo.getDate()-7);
+      return d>=weekAgo;
+    }).length;
+    const subjectMins=stats.subject_minutes||{};
+    const topSubject=Object.entries(subjectMins).sort((a,b)=>b[1]-a[1])[0]?.[0]||"None";
+    return{totalMins,daysStudied,tasksDone,topSubject,streak:stats.streak||0};
+  })();
 
   const pomPct=((25*60-pomodoroSecs)/(25*60))*100;
 
@@ -1707,6 +1741,33 @@ export default function StudyGrove() {
         <div style={{position:"fixed",top:newAchievement?80:20,right:20,zIndex:999,background:T.card,border:`1.5px solid #22c55e`,borderRadius:14,padding:"12px 18px",boxShadow:`0 0 20px #22c55e30`,animation:"slideIn 0.4s ease",maxWidth:260}}>
           <div style={{fontSize:11,color:"#22c55e",fontWeight:700}}>🟢 Friend Online</div>
           <div style={{fontSize:14,marginTop:4,fontWeight:600}}>{friendNotif.username} started studying!</div>
+        </div>
+      )}
+
+      {/* Weekly Report Modal */}
+      {showWeeklyReport&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{...css.card,maxWidth:400,width:"100%",textAlign:"center",padding:32}}>
+            <div style={{fontSize:36,marginBottom:8}}>📊</div>
+            <div style={{fontWeight:900,fontSize:20,marginBottom:4}}>Weekly Study Report</div>
+            <div style={{fontSize:12,color:T.sub,marginBottom:24}}>Last 7 days</div>
+            {[
+              {icon:"⏱",label:"Time studied",val:fmtMins(weeklyReport.totalMins)},
+              {icon:"📅",label:"Days studied",val:`${weeklyReport.daysStudied} / 7`},
+              {icon:"✅",label:"Tasks completed",val:weeklyReport.tasksDone},
+              {icon:"🔥",label:"Current streak",val:`${weeklyReport.streak} days`},
+              {icon:"📘",label:"Top subject",val:weeklyReport.topSubject},
+            ].map(r=>(
+              <div key={r.label} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 0",borderBottom:`1px solid ${T.border}`}}>
+                <span style={{fontSize:14,color:T.sub}}>{r.icon} {r.label}</span>
+                <strong style={{fontSize:15,color:T.accent}}>{r.val}</strong>
+              </div>
+            ))}
+            <div style={{marginTop:20,padding:"12px 16px",background:`${T.accent}12`,borderRadius:10,fontSize:13,color:T.accent}}>
+              {weeklyReport.totalMins>=300?"🔥 Great week! Keep the momentum going.":weeklyReport.totalMins>=60?"💪 Decent week. Push a little harder next time.":"📖 Slow week. Every session counts — start tomorrow."}
+            </div>
+            <button style={{...css.btn,width:"100%",marginTop:20}} onClick={()=>setShowWeeklyReport(false)}>Close</button>
+          </div>
         </div>
       )}
 
@@ -2054,6 +2115,14 @@ export default function StudyGrove() {
             </div>
 
             <div style={{...css.card,gridColumn:"1/-1",position:"relative"}}>
+              {/* Undo delete toast */}
+              {pendingDelete&&(
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#1a1a1a",border:`1px solid ${T.border}`,borderRadius:10,padding:"10px 14px",marginBottom:12}}>
+                  <span style={{fontSize:13,color:T.sub}}>Task deleted</span>
+                  <button onClick={undoDelete} style={{...css.btnO,padding:"4px 14px",fontSize:12,color:T.accent,borderColor:T.accent}}>↩ Undo (5s)</button>
+                </div>
+              )}
+
               {/* XP popup */}
               {taskXpPopup&&(
                 <div style={{position:"absolute",top:-20,right:20,background:"#a855f7",color:"#fff",borderRadius:20,padding:"4px 14px",fontSize:13,fontWeight:700,zIndex:10,animation:"slideIn 0.3s ease"}}>
@@ -2370,7 +2439,10 @@ export default function StudyGrove() {
           <div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
               <div style={{...css.card,gridColumn:"1/-1"}}>
-                <div style={{fontWeight:700,marginBottom:16}}>📊 Overview</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                  <div style={{fontWeight:700}}>📊 Overview</div>
+                  <button style={{...css.btnO,padding:"4px 12px",fontSize:12}} onClick={()=>setShowWeeklyReport(true)}>📋 Weekly Report</button>
+                </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,textAlign:"center"}}>
                   {[
                     {label:"Today",val:fmtMins(stats.today_minutes||0),icon:"📅"},
