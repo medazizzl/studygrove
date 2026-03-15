@@ -1549,6 +1549,76 @@ export default function StudyGrove() {
     return{totalMins,lastWeekMins,daysStudied,tasksDone,topSubject,streak:stats.streak||0,comparison,streakMsg};
   })();
 
+  // ── CHALLENGES ──────────────────────────────────────────────────────────────
+  const DAILY_CHALLENGES=[
+    {id:"daily_early",    title:"Morning Focus",    desc:"Study before 11AM",                  icon:"🌅", xp:15, color:"#22c55e", diff:"Easy",
+     check:()=>{const h=new Date().getHours();return (stats.early_sessions||0)>0||(studying&&h<11);}},
+    {id:"daily_tasks3",   title:"Task Crusher",     desc:"Complete 3 tasks today",             icon:"✅", xp:10, color:"#22c55e", diff:"Easy",
+     check:()=>tasks.filter(t=>t.done).length>=3},
+    {id:"daily_pomo4",    title:"Pomodoro Master",  desc:"Complete 4 pomodoros today",         icon:"🍅", xp:25, color:"#f59e0b", diff:"Medium",
+     check:()=>pomodorosToday>=4},
+    {id:"daily_1hour",    title:"Focused Study",    desc:"Study 1 hour today",                 icon:"⏱", xp:20, color:"#f59e0b", diff:"Medium",
+     check:()=>(stats.today_minutes||0)>=60, chainedBy:"daily_2hour"},
+    {id:"daily_2hour",    title:"Deep Work",        desc:"Study 2 hours today",                icon:"🔥", xp:35, color:"#ef4444", diff:"Hard",
+     check:()=>(stats.today_minutes||0)>=120},
+    {id:"daily_social",   title:"Study Together",   desc:"Study while a friend is studying",   icon:"👥", xp:15, color:"#6366f1", diff:"Easy",
+     check:()=>studying&&onlineMembers.some(m=>m.user_id!==authUser?.id&&m.status==="studying")},
+  ];
+  const WEEKLY_CHALLENGES=[
+    {id:"weekly_5days",   title:"Consistent",       desc:"Study 5 out of 7 days this week",   icon:"📅", xp:50, color:"#f59e0b", diff:"Medium",
+     check:()=>weeklyBarData.filter(d=>d.mins>0).length>=5},
+    {id:"weekly_tasks15", title:"Taskmaster",       desc:"Complete 15 tasks this week",        icon:"🗡️", xp:40, color:"#f59e0b", diff:"Medium",
+     check:()=>tasks.filter(t=>t.done).length>=15},
+    {id:"weekly_10hours", title:"Grinder",          desc:"Study 10+ hours this week",          icon:"⚡", xp:60, color:"#ef4444", diff:"Hard",
+     check:()=>weeklyBarData.reduce((a,d)=>a+d.mins,0)>=600},
+    {id:"weekly_streak7", title:"Streak Keeper",    desc:"Maintain a 7-day streak",            icon:"🔥", xp:75, color:"#ef4444", diff:"Hard",
+     check:()=>(stats.streak||0)>=7},
+    {id:"weekly_social",  title:"Group Scholar",    desc:"Study 3+ sessions with group online",icon:"🤝", xp:40, color:"#6366f1", diff:"Medium",
+     check:()=>(stats.group_sessions_online||0)>=3},
+  ];
+
+  const getChallengeKey=(id,type)=>{
+    const today=new Date();
+    if(type==="daily") return `challenge_${id}_${today.toISOString().slice(0,10)}`;
+    const mon=new Date(today);mon.setDate(today.getDate()-((today.getDay()+6)%7));
+    return `challenge_${id}_week_${mon.toISOString().slice(0,10)}`;
+  };
+  const isChallengeCompleted=(id,type)=>!!(stats[getChallengeKey(id,type)]);
+
+  const claimChallenge=async(challenge,type)=>{
+    if(isChallengeCompleted(challenge.id,type))return;
+    if(!challenge.check())return;
+    const key=getChallengeKey(challenge.id,type);
+    const isChained=challenge.chainedBy&&isChallengeCompleted(challenge.chainedBy,type);
+    const xpGain=isChained?0:challenge.xp;
+    const ns={...stats,[key]:true,total_xp:(stats.total_xp||0)+xpGain};
+    await saveStats(ns);
+    if(xpGain>0){
+      setTaskXpPopup(`🏆 ${challenge.title} · +${xpGain} XP`);
+      setTimeout(()=>setTaskXpPopup(null),3000);
+    }
+  };
+
+  const getChallengeProgress=(challenge)=>{
+    const today_mins=stats.today_minutes||0;
+    const weekly_mins=weeklyBarData.reduce((a,d)=>a+d.mins,0);
+    switch(challenge.id){
+      case "daily_1hour":   return{cur:Math.min(today_mins,60),max:60};
+      case "daily_2hour":   return{cur:Math.min(today_mins,120),max:120};
+      case "daily_tasks3":  return{cur:Math.min(tasks.filter(t=>t.done).length,3),max:3};
+      case "daily_pomo4":   return{cur:Math.min(pomodorosToday,4),max:4};
+      case "daily_early":   return{cur:(stats.early_sessions||0)>0?1:0,max:1};
+      case "daily_social":  return{cur:studying&&onlineMembers.some(m=>m.user_id!==authUser?.id&&m.status==="studying")?1:0,max:1};
+      case "weekly_5days":  return{cur:Math.min(weeklyBarData.filter(d=>d.mins>0).length,5),max:5};
+      case "weekly_tasks15":return{cur:Math.min(tasks.filter(t=>t.done).length,15),max:15};
+      case "weekly_10hours":return{cur:Math.min(weekly_mins,600),max:600};
+      case "weekly_streak7":return{cur:Math.min(stats.streak||0,7),max:7};
+      case "weekly_social": return{cur:Math.min(stats.group_sessions_online||0,3),max:3};
+      default: return{cur:0,max:1};
+    }
+  };
+  // ────────────────────────────────────────────────────────────────────────────
+
   const pomPct=((25*60-pomodoroSecs)/(25*60))*100;
 
   // Planner constants
@@ -2054,7 +2124,7 @@ export default function StudyGrove() {
       )}
 
       <div style={{display:"flex",gap:4,padding:"10px 16px",overflowX:"auto",borderBottom:`1px solid ${T.border}`,background:T.surface,position:"sticky",top:57,zIndex:99}}>
-        {[["study","⏱ Study"],["social","👥 Social"],["leaderboard","🏆 Ranks"],["stats","📊 Stats"],["planner","📅 Planner"],["achievements","🎖 Badges"],["settings","⚙️ Settings"]].map(([t,l])=>(
+        {[["study","⏱ Study"],["social","👥 Social"],["leaderboard","🏆 Ranks"],["stats","📊 Stats"],["challenges","⚔️ Challenges"],["planner","📅 Planner"],["achievements","🎖 Badges"],["settings","⚙️ Settings"]].map(([t,l])=>(
           <button key={t} style={css.tBtn(tab===t)} onClick={()=>setTab(t)}>{l}</button>
         ))}
       </div>
@@ -2146,20 +2216,6 @@ export default function StudyGrove() {
                   <span style={css.dot(m.status)}/>
                 </div>
               ))}
-            </div>
-
-            <div style={{...css.card,gridColumn:"1/-1"}}>
-              <div style={{fontWeight:700,marginBottom:12}}>⚔️ Challenges</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-                {[{icon:"👑",name:"Last Student Standing",desc:"All start together – first to stop is out!"},{icon:"⚡",name:"24-Hour Grind",desc:"Who studies the most in 24 hours?"},{icon:"📅",name:"30-Day Challenge",desc:"Consistent grind for 30 days."}].map(c=>(
-                  <div key={c.name} style={{...css.card,background:T.surface,padding:14}}>
-                    <div style={{fontSize:24}}>{c.icon}</div>
-                    <div style={{fontWeight:700,fontSize:13,marginTop:6}}>{c.name}</div>
-                    <div style={{fontSize:11,color:T.sub,marginTop:4}}>{c.desc}</div>
-                    {!group&&<div style={{fontSize:11,color:"#f59e0b",marginTop:6}}>Join a group to start</div>}
-                  </div>
-                ))}
-              </div>
             </div>
 
             <div style={{...css.card,gridColumn:"1/-1",position:"relative"}}>
@@ -2644,6 +2700,124 @@ export default function StudyGrove() {
                     <div style={{fontSize:11,color:T.sub}}>Badges earned</div>
                     <div style={{fontSize:22,fontWeight:900,color:T.accent,marginTop:4}}>{(stats.achievements||[]).length}/{ACHIEVEMENTS.length}</div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab==="challenges"&&(
+          <div>
+            {/* XP popup */}
+            {taskXpPopup&&(
+              <div style={{position:"fixed",top:80,left:"50%",transform:"translateX(-50%)",background:"#a855f7",color:"#fff",borderRadius:20,padding:"8px 20px",fontSize:14,fontWeight:700,zIndex:1000,animation:"slideIn 0.3s ease",whiteSpace:"nowrap"}}>
+                {taskXpPopup}
+              </div>
+            )}
+
+            {/* Daily Challenges */}
+            <div style={css.card}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                <div style={{fontWeight:800,fontSize:16}}>☀️ Daily Challenges</div>
+                <div style={{fontSize:11,color:T.sub}}>Resets at midnight</div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {DAILY_CHALLENGES.map(c=>{
+                  const done=isChallengeCompleted(c.id,"daily");
+                  const prog=getChallengeProgress(c);
+                  const pct=Math.min((prog.cur/prog.max)*100,100);
+                  const canClaim=!done&&c.check();
+                  return(
+                    <div key={c.id} style={{borderRadius:12,padding:"14px 16px",background:done?`${c.color}15`:T.surface,border:`1px solid ${done?c.color:T.border}`,opacity:done?0.75:1,transition:"all 0.2s"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                        <span style={{fontSize:22}}>{done?"✅":c.icon}</span>
+                        <div style={{flex:1}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                            <span style={{fontWeight:700,fontSize:14,color:done?T.sub:T.text}}>{c.title}</span>
+                            <span style={{fontSize:10,color:c.color,fontWeight:700,padding:"1px 7px",background:`${c.color}22`,borderRadius:20}}>{c.diff}</span>
+                          </div>
+                          <div style={{fontSize:12,color:T.sub,marginTop:2}}>{c.desc}</div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#a855f7"}}>+{c.xp} XP</div>
+                          {!done&&<div style={{fontSize:11,color:T.sub}}>{prog.cur}/{prog.max}</div>}
+                          {done&&<div style={{fontSize:11,color:c.color,fontWeight:700}}>✓ Done</div>}
+                        </div>
+                      </div>
+                      <div style={{height:5,background:T.border,borderRadius:3,overflow:"hidden"}}>
+                        <div style={{height:"100%",background:done?"#22c55e":c.color,borderRadius:3,width:`${pct}%`,transition:"width 0.5s"}}/>
+                      </div>
+                      {canClaim&&(
+                        <button style={{...css.btn,width:"100%",marginTop:10,padding:"8px",fontSize:13,background:c.color,color:"#fff"}} onClick={()=>claimChallenge(c,"daily")}>
+                          🎁 Claim +{c.xp} XP
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Weekly Challenges */}
+            <div style={css.card}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+                <div style={{fontWeight:800,fontSize:16}}>📅 Weekly Challenges</div>
+                <div style={{fontSize:11,color:T.sub}}>Resets every Monday</div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {WEEKLY_CHALLENGES.map(c=>{
+                  const done=isChallengeCompleted(c.id,"weekly");
+                  const prog=getChallengeProgress(c);
+                  const pct=Math.min((prog.cur/prog.max)*100,100);
+                  const canClaim=!done&&c.check();
+                  return(
+                    <div key={c.id} style={{borderRadius:12,padding:"14px 16px",background:done?`${c.color}15`:T.surface,border:`1px solid ${done?c.color:T.border}`,opacity:done?0.75:1,transition:"all 0.2s"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                        <span style={{fontSize:22}}>{done?"✅":c.icon}</span>
+                        <div style={{flex:1}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                            <span style={{fontWeight:700,fontSize:14,color:done?T.sub:T.text}}>{c.title}</span>
+                            <span style={{fontSize:10,color:c.color,fontWeight:700,padding:"1px 7px",background:`${c.color}22`,borderRadius:20}}>{c.diff}</span>
+                          </div>
+                          <div style={{fontSize:12,color:T.sub,marginTop:2}}>{c.desc}</div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#a855f7"}}>+{c.xp} XP</div>
+                          {!done&&<div style={{fontSize:11,color:T.sub}}>{c.id==="weekly_10hours"?fmtMins(prog.cur)+" / "+fmtMins(prog.max):`${prog.cur}/${prog.max}`}</div>}
+                          {done&&<div style={{fontSize:11,color:c.color,fontWeight:700}}>✓ Done</div>}
+                        </div>
+                      </div>
+                      <div style={{height:5,background:T.border,borderRadius:3,overflow:"hidden"}}>
+                        <div style={{height:"100%",background:done?"#22c55e":c.color,borderRadius:3,width:`${pct}%`,transition:"width 0.5s"}}/>
+                      </div>
+                      {canClaim&&(
+                        <button style={{...css.btn,width:"100%",marginTop:10,padding:"8px",fontSize:13,background:c.color,color:"#fff"}} onClick={()=>claimChallenge(c,"weekly")}>
+                          🎁 Claim +{c.xp} XP
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Summary */}
+            <div style={css.card}>
+              <div style={{fontWeight:700,marginBottom:12}}>📊 This Week</div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                <div style={{flex:1,padding:"12px 16px",background:T.surface,borderRadius:10,border:`1px solid ${T.border}`,textAlign:"center"}}>
+                  <div style={{fontSize:22,fontWeight:900,color:"#22c55e"}}>{DAILY_CHALLENGES.filter(c=>isChallengeCompleted(c.id,"daily")).length}/{DAILY_CHALLENGES.length}</div>
+                  <div style={{fontSize:11,color:T.sub,marginTop:4}}>Daily done today</div>
+                </div>
+                <div style={{flex:1,padding:"12px 16px",background:T.surface,borderRadius:10,border:`1px solid ${T.border}`,textAlign:"center"}}>
+                  <div style={{fontSize:22,fontWeight:900,color:"#f59e0b"}}>{WEEKLY_CHALLENGES.filter(c=>isChallengeCompleted(c.id,"weekly")).length}/{WEEKLY_CHALLENGES.length}</div>
+                  <div style={{fontSize:11,color:T.sub,marginTop:4}}>Weekly done</div>
+                </div>
+                <div style={{flex:1,padding:"12px 16px",background:T.surface,borderRadius:10,border:`1px solid ${T.border}`,textAlign:"center"}}>
+                  <div style={{fontSize:22,fontWeight:900,color:"#a855f7"}}>
+                    {[...DAILY_CHALLENGES,...WEEKLY_CHALLENGES].filter(c=>isChallengeCompleted(c.id,DAILY_CHALLENGES.includes(c)?"daily":"weekly")).reduce((a,c)=>a+c.xp,0)}
+                  </div>
+                  <div style={{fontSize:11,color:T.sub,marginTop:4}}>XP from challenges</div>
                 </div>
               </div>
             </div>
