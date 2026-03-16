@@ -411,6 +411,7 @@ export default function StudyGrove() {
   const [tab, setTab] = useState("study");
   const [studying, setStudying] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState("Math");
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [subjects, setSubjects] = useState([...DEFAULT_SUBJECTS]);
   const [newSubject, setNewSubject] = useState("");
   const [showAddSubject, setShowAddSubject] = useState(false);
@@ -839,8 +840,19 @@ export default function StudyGrove() {
         }
         setSessionXP(xpResult.gained);
         setShowSessionSummary({mins,xpEarned:xpResult.gained,xpBreakdown:[`${mins} XP base`,...xpResult.bonuses],streak:ns.streak||0,levelData:getXPProgress(xpResult.newXP)});
+
+        // Log time to selected task
+        if(selectedTaskId&&mins>0){
+          const task=tasks.find(t=>t.id===selectedTaskId);
+          if(task){
+            const newTimeSpent=(task.time_spent||0)+mins;
+            await supabase.from("tasks").update({time_spent:newTimeSpent}).eq("id",selectedTaskId);
+            setTasks(prev=>prev.map(t=>t.id===selectedTaskId?{...t,time_spent:newTimeSpent}:t));
+          }
+        }
       }
       setSessionSecs(0);
+      setSelectedTaskId(null);
     }
   };
 
@@ -2317,6 +2329,31 @@ export default function StudyGrove() {
                   <button style={css.btn} onClick={()=>{if(newSubject.trim()&&!subjects.includes(newSubject.trim())){setSubjects(p=>[...p,newSubject.trim()]);setNewSubject("");setShowAddSubject(false);}}}>Add</button>
                 </div>
               )}
+              {/* Task picker */}
+              {!studying&&tasks.filter(t=>!t.done).length>0&&(
+                <div style={{marginBottom:14}}>
+                  <div style={{fontSize:11,color:T.sub,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>Working on (optional)</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center"}}>
+                    <button onClick={()=>setSelectedTaskId(null)} style={{...css.btnO,padding:"4px 12px",fontSize:11,borderColor:!selectedTaskId?T.accent:T.border,color:!selectedTaskId?T.accent:T.sub}}>None</button>
+                    {tasks.filter(t=>!t.done).slice(0,5).map(t=>(
+                      <button key={t.id} onClick={()=>{setSelectedTaskId(t.id);if(!selectedSubject||selectedSubject!==t.subject)setSelectedSubject(t.subject);}} style={{...css.btnO,padding:"4px 12px",fontSize:11,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",borderColor:selectedTaskId===t.id?getSubjectColor(t.subject):T.border,color:selectedTaskId===t.id?getSubjectColor(t.subject):T.sub,background:selectedTaskId===t.id?`${getSubjectColor(t.subject)}18`:"transparent"}}>
+                        {t.text.length>18?t.text.slice(0,18)+"…":t.text}
+                      </button>
+                    ))}
+                  </div>
+                  {selectedTaskId&&(
+                    <div style={{fontSize:11,color:T.sub,marginTop:6,textAlign:"center"}}>
+                      ⏱ Time will be logged to: <strong style={{color:getSubjectColor(tasks.find(t=>t.id===selectedTaskId)?.subject||"")}}>{tasks.find(t=>t.id===selectedTaskId)?.text}</strong>
+                    </div>
+                  )}
+                </div>
+              )}
+              {studying&&selectedTaskId&&(
+                <div style={{fontSize:12,color:T.accent,marginBottom:12,textAlign:"center"}}>
+                  ⏱ Logging time to: <strong>{tasks.find(t=>t.id===selectedTaskId)?.text}</strong>
+                </div>
+              )}
+
               <button onClick={startStop} style={{...css.btn,padding:"14px 48px",fontSize:18,background:studying?"#cc2222":T.accent,color:studying?"#fff":"#000",borderRadius:14,boxShadow:studying?`0 0 20px #cc222240`:`0 0 20px ${T.accent}40`}}>
                 {studying?"⏹ Stop Studying":"▶ Start Studying"}
               </button>
@@ -2430,6 +2467,7 @@ export default function StudyGrove() {
                             <div style={{display:"flex",gap:8,marginTop:4,flexWrap:"wrap"}}>
                               {t.difficulty&&<span style={{fontSize:11,color:t.difficulty==="Hard"?"#ff6d00":t.difficulty==="Medium"?"#f59e0b":"#22c55e",fontWeight:600}}>{t.difficulty==="Hard"?"🔥":""}  {t.difficulty}</span>}
                               {t.estimate&&<span style={{fontSize:11,color:T.sub}}>⏱ {t.estimate}</span>}
+                              {t.time_spent>0&&<span style={{fontSize:11,color:T.accent,fontWeight:600}}>🕐 {fmtMins(t.time_spent)} spent</span>}
                             </div>
                           </div>
                           <button onClick={()=>deleteTask(t.id)} style={{background:"transparent",border:"none",color:T.sub,cursor:"pointer",fontSize:16,lineHeight:1,flexShrink:0}}>×</button>
