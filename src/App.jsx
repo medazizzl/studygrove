@@ -410,6 +410,7 @@ export default function StudyGrove() {
 
   const [tab, setTab] = useState("study");
   const [studying, setStudying] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState("Math");
   const [selectedTaskId, setSelectedTaskId] = useState(null);
   const [showTaskPicker, setShowTaskPicker] = useState(false);
@@ -727,16 +728,18 @@ export default function StudyGrove() {
     channelRef.current.track({user_id:authUser?.id,username:profile?.username,status:studying?(invisible?"invisible":"studying"):"online",subject:selectedSubject});
   },[studying,invisible,selectedSubject,profile]);
 
+  const pauseResume=()=>{
+    setPaused(v=>!v);
+  };
+
   useEffect(()=>{
-    if(studying){
+    if(studying && !paused){
       trackActivityRef.current=()=>{lastActivityRef.current=Date.now();setIsInactive(false);};
       window.addEventListener("mousemove",trackActivityRef.current);
       window.addEventListener("keydown",trackActivityRef.current);
       window.addEventListener("touchstart",trackActivityRef.current);
       inactivityRef.current=setInterval(()=>{
-        if(Date.now()-lastActivityRef.current>300000){// 5 min
-          setIsInactive(true);
-        }
+        if(Date.now()-lastActivityRef.current>300000) setIsInactive(true);
       },10000);
       timerRef.current=setInterval(()=>{
         setIsInactive(inactive=>{
@@ -758,12 +761,14 @@ export default function StudyGrove() {
         window.removeEventListener("touchstart",trackActivityRef.current);
         trackActivityRef.current=null;
       }
-      setIsInactive(false);
-      if(quoteTimer){clearInterval(quoteTimer);setQuoteTimer(null);}
-      setCurrentQuote("");
+      if(!paused){
+        setIsInactive(false);
+        if(quoteTimer){clearInterval(quoteTimer);setQuoteTimer(null);}
+        setCurrentQuote("");
+      }
     }
     return()=>{clearInterval(timerRef.current);clearInterval(inactivityRef.current);};
-  },[studying]);
+  },[studying, paused]);
 
   useEffect(()=>{
     if(studying&&pomodoroMode){
@@ -859,6 +864,7 @@ export default function StudyGrove() {
         }
       }
       setSessionSecs(0);
+      setPaused(false);
       setSelectedTaskId(null);
     }
   };
@@ -2219,6 +2225,7 @@ export default function StudyGrove() {
           {pomodoroMode&&<div style={{marginTop:16,width:200}}><div style={{height:4,background:T.border,borderRadius:2}}><div style={{height:"100%",background:T.accent,borderRadius:2,width:`${pomPct}%`,transition:"width 1s linear"}}/></div><div style={{fontSize:12,color:T.sub,textAlign:"center",marginTop:6}}>🍅 {fmtTime(pomodoroSecs)}</div></div>}
           <div style={{display:"flex",gap:10,marginTop:32}}>
             <button style={css.btnO} onClick={()=>setFocusMode(false)}>Exit</button>
+            <button onClick={pauseResume} style={{...css.btnO,fontSize:18,padding:"8px 16px",borderColor:paused?T.accent:T.border,color:paused?T.accent:T.sub}}>{paused?"▶":"⏸"}</button>
             <button style={css.btnD} onClick={startStop}>Stop</button>
           </div>
         </div>
@@ -2319,7 +2326,8 @@ export default function StudyGrove() {
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
             <div style={{...css.card,gridColumn:"1/-1",textAlign:"center",boxShadow:studying?`0 0 40px ${T.accent}25`:"none",transition:"box-shadow 0.4s"}}>
               <div style={{fontSize:12,color:T.sub,fontWeight:700,textTransform:"uppercase",letterSpacing:2,marginBottom:12}}>{studying?`Studying ${selectedSubject}`:"Ready to Study?"}</div>
-              <div style={{fontSize:72,fontWeight:900,color:studying?T.accent:T.text,fontVariantNumeric:"tabular-nums",letterSpacing:-2,lineHeight:1}}>{fmtTime(sessionSecs)}</div>
+              <div style={{fontSize:72,fontWeight:900,color:paused?"#f59e0b":studying?T.accent:T.text,fontVariantNumeric:"tabular-nums",letterSpacing:-2,lineHeight:1}}>{fmtTime(sessionSecs)}</div>
+              {paused&&<div style={{fontSize:12,color:"#f59e0b",fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginTop:4}}>⏸ Paused</div>}
               <div style={{display:"flex",justifyContent:"center",gap:24,margin:"12px 0",fontSize:13,color:T.sub,flexWrap:"wrap"}}>
                 <span>Today <strong style={{color:T.text}}>{fmtMins(stats.today_minutes||0)}</strong></span>
                 <span>Week <strong style={{color:T.text}}>{fmtMins(stats.weekly_minutes||0)}</strong></span>
@@ -2368,9 +2376,16 @@ export default function StudyGrove() {
                 </div>
               )}
 
-              <button onClick={startStop} style={{...css.btn,padding:"14px 48px",fontSize:18,background:studying?"#cc2222":T.accent,color:studying?"#fff":"#000",borderRadius:14,boxShadow:studying?`0 0 20px #cc222240`:`0 0 20px ${T.accent}40`}}>
-                {studying?"⏹ Stop Studying":"▶ Start Studying"}
-              </button>
+              <div style={{display:"flex",gap:10,justifyContent:"center",alignItems:"center"}}>
+                <button onClick={startStop} style={{...css.btn,padding:"14px 48px",fontSize:18,background:studying?"#cc2222":T.accent,color:studying?"#fff":"#000",borderRadius:14,boxShadow:studying?`0 0 20px #cc222240`:`0 0 20px ${T.accent}40`}}>
+                  {studying?"⏹ Stop":"▶ Start Studying"}
+                </button>
+                {studying&&(
+                  <button onClick={pauseResume} style={{...css.btnO,padding:"14px 20px",fontSize:18,borderRadius:14,borderColor:paused?T.accent:T.border,color:paused?T.accent:T.sub}}>
+                    {paused?"▶":"⏸"}
+                  </button>
+                )}
+              </div>
               <div style={{marginTop:14,display:"flex",alignItems:"center",justifyContent:"center",gap:12,flexWrap:"wrap"}}>
                 <button onClick={()=>setPomodoroMode(v=>!v)} style={{...css.btnO,fontSize:12,padding:"4px 12px",borderColor:pomodoroMode?T.accent:T.border,color:pomodoroMode?T.accent:T.sub}}>🍅 Pomodoro {pomodoroMode?"ON":"OFF"}</button>
                 {pomodoroMode&&<span style={{fontSize:13,color:T.accent}}>{fmtTime(pomodoroSecs)} · {pomodorosToday} done</span>}
