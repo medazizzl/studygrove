@@ -284,7 +284,7 @@ const FrameParticles = ({ size, ptype }) => {
 
 const FramedAvatar = ({ size=40, avatarUrl, username, frameId, unlockedFrames, isPro, accentColor }) => {
   const frame  = frameId && frameId !== "none" ? FRAMES[frameId] : null;
-  const owned  = frame && (unlockedFrames.includes(frameId) || (frame.premium && isPro));
+  const owned  = frame && (unlockedFrames.includes(frameId) || frame.premium); // all frames free
   const ring   = Math.max(4, size * 0.13); // ring thickness
   const gap    = Math.max(2, size * 0.04); // dark gap between ring and avatar
   const inner  = size - (ring + gap) * 2;
@@ -434,11 +434,10 @@ export default function StudyGrove() {
   const [friendNotif, setFriendNotif] = useState(null);
 
   const [stats, setStats] = useState({total_minutes:0,today_minutes:0,weekly_minutes:0,streak:0,total_sessions:0,pomodoros_total:0,tasks_completed:0,subject_minutes:{},achievements:[],invisible_minutes:0,night_sessions:0,early_sessions:0,groups_joined:0,focus_uses:0,themes_used:1,challenge_wins:0});
-  const [isPro] = useState(false); // set to true when payment confirmed
+  const isPro = true; // all features free
   const [selectedFrame, setSelectedFrame] = useState(()=>localStorage.getItem("sg_frame")||"none");
   const [profileTitle, setProfileTitle] = useState(()=>localStorage.getItem("sg_title")||"");
   const [currentQuote, setCurrentQuote] = useState("");
-  const [showProModal, setShowProModal] = useState(false);
   const [showWeeklyReport, setShowWeeklyReport] = useState(false);
   const [globalTop, setGlobalTop] = useState([]);
   const [showFullGlobal, setShowFullGlobal] = useState(false);
@@ -1501,7 +1500,7 @@ export default function StudyGrove() {
 
   // Rotate motivational quote every 3 minutes while studying
   useEffect(()=>{
-    if(!studying||!isPro)return;
+    if(!studying)return;
     const pool=[...(QUOTES[selectedSubject]||[]),...QUOTES.default];
     const pick=()=>setCurrentQuote(pool[Math.floor(Math.random()*pool.length)]);
     pick();
@@ -2156,25 +2155,6 @@ export default function StudyGrove() {
         </div>
       )}
 
-      {showProModal&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-          <div style={{...css.card,width:"100%",maxWidth:420,textAlign:"center",boxShadow:`0 0 60px ${T.accent}30`}}>
-            <div style={{fontSize:48}}>👑</div>
-            <div style={{fontWeight:900,fontSize:24,marginTop:8}}>StudyGrove <span style={{color:T.accent}}>Pro</span></div>
-            <div style={{color:T.sub,fontSize:13,marginTop:4,marginBottom:20}}>Unlock the full experience</div>
-            {[["💬","Subject quotes & jokes while you study"],["🖼️","Animated profile frames"],["🎁","Weekly mystery box rewards"],["🔥","10 streak revivals/month"],["📊","Study heatmap & weekly reports"],["👑","Exclusive Pro badge & profile titles"]].map(([icon,text])=>(
-              <div key={text} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:`1px solid ${T.border}`,textAlign:"left"}}>
-                <span style={{fontSize:20}}>{icon}</span>
-                <span style={{fontSize:13}}>{text}</span>
-              </div>
-            ))}
-            <div style={{marginTop:20,fontWeight:900,fontSize:22,color:T.accent}}>$2.99<span style={{fontSize:14,fontWeight:400,color:T.sub}}>/month</span></div>
-            <div style={{fontSize:12,color:"#f59e0b",marginTop:4,marginBottom:16}}>🚀 Launching soon — join the waitlist!</div>
-            <button style={{...css.btn,width:"100%",padding:14,fontSize:15}} onClick={()=>{window.open("https://studygrove-gilt.vercel.app","_blank");setShowProModal(false);}}>Join Waitlist</button>
-            <button style={{...css.btnO,width:"100%",marginTop:8}} onClick={()=>setShowProModal(false)}>Maybe later</button>
-          </div>
-        </div>
-      )}
 
       {focusMode&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.96)",zIndex:800,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
@@ -2241,7 +2221,6 @@ export default function StudyGrove() {
           <button style={{...css.btnO,padding:"4px 10px",fontSize:11}} onClick={()=>setInvisible(v=>!v)}>{invisible?"👻 Invisible":"🟢 Visible"}</button>
           <button style={{...css.btnO,padding:"4px 10px",fontSize:11}} onClick={()=>setShowThemePanel(v=>!v)}>🎨</button>
           <button style={{...css.btnO,padding:"4px 10px",fontSize:11}} onClick={()=>setShowGroupModal(true)}>👥 Groups</button>
-          <button style={{...css.btn,padding:"4px 10px",fontSize:11,background:"linear-gradient(135deg,#ffd700,#ff6d00)",color:"#000"}} onClick={()=>setShowProModal(true)}>👑 Pro</button>
           <div style={{cursor:"pointer"}} onClick={()=>setTab("settings")}>
             <FramedAvatar size={36} avatarUrl={avatarUrl} username={profile?.username} frameId={selectedFrame} unlockedFrames={unlockedFrames} isPro={isPro} accentColor={T.accent}/>
           </div>
@@ -2269,7 +2248,6 @@ export default function StudyGrove() {
           <button style={{...css.btnO,fontSize:13,textAlign:"left"}} onClick={()=>{setInvisible(v=>!v);setShowMobileMenu(false);}}>{invisible?"👻 Go Visible":"🟢 Go Invisible"}</button>
           <button style={{...css.btnO,fontSize:13,textAlign:"left"}} onClick={()=>{setShowThemePanel(v=>!v);setShowMobileMenu(false);}}>🎨 Change Theme</button>
           <button style={{...css.btnO,fontSize:13,textAlign:"left"}} onClick={()=>{setShowGroupModal(true);setShowMobileMenu(false);}}>👥 Groups</button>
-          <button style={{...css.btn,fontSize:13,background:"linear-gradient(135deg,#ffd700,#ff6d00)",color:"#000",textAlign:"left"}} onClick={()=>{setShowProModal(true);setShowMobileMenu(false);}}>👑 Upgrade to Pro</button>
           {group&&<div style={{fontSize:11,color:T.sub,padding:"4px 8px",borderTop:`1px solid ${T.border}`,marginTop:4}}>Group: <strong style={{color:T.accent}}>{group.name} · {group.code}</strong></div>}
         </div>
       )}
@@ -2314,7 +2292,7 @@ export default function StudyGrove() {
               )}
               {studying&&(
                 <div style={{margin:"12px 0",padding:"10px 16px",background:T.surface,borderRadius:10,border:`1px solid ${T.border}`,fontSize:13,color:T.sub,fontStyle:"italic",textAlign:"center",minHeight:40}}>
-                  {isPro&&currentQuote?`"${currentQuote}"`:<span>💬 Subject-based quotes — <span style={{color:T.accent,cursor:"pointer"}} onClick={()=>setShowProModal(true)}>Pro feature</span></span>}
+                  {currentQuote?`"${currentQuote}"`:<span style={{color:T.sub,fontSize:12}}>💬 Quote will appear while studying...</span>}
                 </div>
               )}
               <div style={{display:"flex",flexWrap:"wrap",gap:6,justifyContent:"center",margin:"14px 0"}}>
@@ -3417,11 +3395,7 @@ export default function StudyGrove() {
                 ))}
               </div>
             </div>
-            <div style={css.card}>
-              <div style={{fontWeight:700,marginBottom:4}}>👑 StudyGrove Pro</div>
-              <div style={{fontSize:12,color:T.sub,marginBottom:12}}>Unlock animated frames, quotes, mystery box and more</div>
-              <button style={{...css.btn,width:"100%",padding:12}} onClick={()=>setShowProModal(true)}>✨ View Pro Features — $2.99/month</button>
-            </div>
+
 
             <div style={css.card}>
               <div style={{fontWeight:700,marginBottom:4}}>🔒 Privacy</div>
@@ -3431,21 +3405,6 @@ export default function StudyGrove() {
               </div>
             </div>
 
-
-            {/* Go Pro Banner */}
-            <div style={{...css.card,border:`1.5px solid #ffd600`,background:`linear-gradient(135deg,${T.card},#ffd60010)`,marginBottom:16}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-                <div>
-                  <div style={{fontWeight:900,fontSize:18}}>👑 StudyGrove <span style={{color:"#ffd600"}}>Pro</span></div>
-                  <div style={{fontSize:12,color:T.sub,marginTop:4}}>Animated frames · Weekly mystery box · Quotes · Heatmap · 10 streak revivals · <span style={{color:"#4caf50"}}>No ads ever</span></div>
-                  <div style={{fontSize:13,color:"#ffd600",fontWeight:700,marginTop:6}}>$2.99/month</div>
-                </div>
-                <div style={{textAlign:"center"}}>
-                  <button style={{...css.btn,background:"#ffd600",color:"#000",padding:"10px 20px",fontSize:14,borderRadius:12}}>Coming Soon 🚀</button>
-                  <div style={{fontSize:10,color:T.sub,marginTop:4}}>Be the first to know</div>
-                </div>
-              </div>
-            </div>
 
             <div style={css.card}>
               <div style={{fontWeight:700,marginBottom:12}}>🔔 Notifications</div>
@@ -3483,7 +3442,7 @@ export default function StudyGrove() {
                         <FramedAvatar size={40} avatarUrl={null} username="A" frameId={f.id} unlockedFrames={owned?[f.id]:[]} isPro={true} accentColor={T.accent}/>
                       </div>
                       <div style={{fontSize:9,color:active?accent:owned?accent:T.sub,fontWeight:active?700:400}}>{f.name}</div>
-                      {f.premium&&<div style={{position:"absolute",top:2,right:2,fontSize:7,background:"#ffd600",color:"#000",borderRadius:3,padding:"1px 4px",fontWeight:700}}>PRO</div>}
+
                       {!owned&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,borderRadius:8}}>🔒</div>}
                       {active&&<div style={{position:"absolute",top:2,left:2,fontSize:7,background:accent,color:"#000",borderRadius:3,padding:"1px 4px",fontWeight:700}}>ON</div>}
                     </div>
