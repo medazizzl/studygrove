@@ -412,6 +412,7 @@ export default function StudyGrove() {
   const [studying, setStudying] = useState(false);
   const [selectedSubject, setSelectedSubject] = useState("Math");
   const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [showTaskPicker, setShowTaskPicker] = useState(false);
   const [subjects, setSubjects] = useState([...DEFAULT_SUBJECTS]);
   const [newSubject, setNewSubject] = useState("");
   const [showAddSubject, setShowAddSubject] = useState(false);
@@ -781,6 +782,13 @@ export default function StudyGrove() {
 
   const startStop=async()=>{
     if(!studying){
+      // Show task picker if user has tasks for this subject
+      const subjectTasks=tasks.filter(t=>!t.done&&t.subject===selectedSubject);
+      if(subjectTasks.length>0&&!showTaskPicker){
+        setShowTaskPicker(true);
+        return;
+      }
+      setShowTaskPicker(false);
       setStudying(true);
       setSessionXP(0);
       lastActivityRef.current=Date.now();
@@ -2092,6 +2100,53 @@ export default function StudyGrove() {
         </div>
       )}
 
+      {/* ── TASK PICKER MODAL ── */}
+      {showTaskPicker&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:800,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div style={{...css.card,maxWidth:420,width:"100%",padding:28}}>
+            <div style={{textAlign:"center",marginBottom:20}}>
+              <div style={{fontSize:32,marginBottom:8}}>🎯</div>
+              <div style={{fontWeight:900,fontSize:18}}>Working on a task?</div>
+              <div style={{fontSize:13,color:T.sub,marginTop:6}}>
+                {selectedSubject} tasks — pick one to track your time
+              </div>
+            </div>
+
+            {/* Subject tasks */}
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16,maxHeight:280,overflowY:"auto"}}>
+              {tasks.filter(t=>!t.done&&t.subject===selectedSubject).map(t=>{
+                const col=getSubjectColor(t.subject);
+                const isSelected=selectedTaskId===t.id;
+                return(
+                  <div key={t.id} onClick={()=>setSelectedTaskId(isSelected?null:t.id)} style={{padding:"12px 14px",borderRadius:10,border:`2px solid ${isSelected?col:T.border}`,background:isSelected?`${col}18`:T.surface,cursor:"pointer",transition:"all 0.15s"}}>
+                    <div style={{fontWeight:600,fontSize:14,color:isSelected?col:T.text}}>{t.text}</div>
+                    {(t.difficulty||t.time_spent>0)&&(
+                      <div style={{display:"flex",gap:8,marginTop:4}}>
+                        {t.difficulty&&<span style={{fontSize:11,color:T.sub}}>{t.difficulty}</span>}
+                        {t.time_spent>0&&<span style={{fontSize:11,color:T.accent}}>🕐 {fmtMins(t.time_spent)} so far</span>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{display:"flex",gap:8}}>
+              <button style={{...css.btn,flex:1,padding:12}} onClick={()=>{setShowTaskPicker(false);startStop();}}>
+                {selectedTaskId?"▶ Start with task":"▶ Start without task"}
+              </button>
+              <button style={{...css.btnO,padding:12}} onClick={()=>{setSelectedTaskId(null);setShowTaskPicker(false);}}>Cancel</button>
+            </div>
+
+            {selectedTaskId&&(
+              <div style={{fontSize:11,color:T.accent,textAlign:"center",marginTop:10}}>
+                ⏱ Time will be logged to: <strong>{tasks.find(t=>t.id===selectedTaskId)?.text}</strong>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── GLOBAL XP POPUP ── */}
       {taskXpPopup&&(
         <div style={{position:"fixed",top:70,left:"50%",transform:"translateX(-50%)",background:"linear-gradient(135deg,#7c3aed,#a855f7)",color:"#fff",borderRadius:16,padding:"10px 24px",fontSize:14,fontWeight:700,zIndex:2000,animation:"slideIn 0.3s ease",whiteSpace:"nowrap",boxShadow:"0 4px 20px rgba(168,85,247,0.5)",textAlign:"center"}}>
@@ -2307,27 +2362,8 @@ export default function StudyGrove() {
                   <button style={css.btn} onClick={()=>{if(newSubject.trim()&&!subjects.includes(newSubject.trim())){setSubjects(p=>[...p,newSubject.trim()]);setNewSubject("");setShowAddSubject(false);}}}>Add</button>
                 </div>
               )}
-              {/* Task picker */}
-              {!studying&&tasks.filter(t=>!t.done).length>0&&(
-                <div style={{marginBottom:14}}>
-                  <div style={{fontSize:11,color:T.sub,marginBottom:6,textTransform:"uppercase",letterSpacing:1}}>Working on (optional)</div>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center"}}>
-                    <button onClick={()=>setSelectedTaskId(null)} style={{...css.btnO,padding:"4px 12px",fontSize:11,borderColor:!selectedTaskId?T.accent:T.border,color:!selectedTaskId?T.accent:T.sub}}>None</button>
-                    {tasks.filter(t=>!t.done).slice(0,5).map(t=>(
-                      <button key={t.id} onClick={()=>{setSelectedTaskId(t.id);if(!selectedSubject||selectedSubject!==t.subject)setSelectedSubject(t.subject);}} style={{...css.btnO,padding:"4px 12px",fontSize:11,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",borderColor:selectedTaskId===t.id?getSubjectColor(t.subject):T.border,color:selectedTaskId===t.id?getSubjectColor(t.subject):T.sub,background:selectedTaskId===t.id?`${getSubjectColor(t.subject)}18`:"transparent"}}>
-                        {t.text.length>18?t.text.slice(0,18)+"…":t.text}
-                      </button>
-                    ))}
-                  </div>
-                  {selectedTaskId&&(
-                    <div style={{fontSize:11,color:T.sub,marginTop:6,textAlign:"center"}}>
-                      ⏱ Time will be logged to: <strong style={{color:getSubjectColor(tasks.find(t=>t.id===selectedTaskId)?.subject||"")}}>{tasks.find(t=>t.id===selectedTaskId)?.text}</strong>
-                    </div>
-                  )}
-                </div>
-              )}
               {studying&&selectedTaskId&&(
-                <div style={{fontSize:12,color:T.accent,marginBottom:12,textAlign:"center"}}>
+                <div style={{fontSize:12,color:T.accent,marginBottom:12,textAlign:"center",padding:"6px 12px",background:`${T.accent}12`,borderRadius:8}}>
                   ⏱ Logging time to: <strong>{tasks.find(t=>t.id===selectedTaskId)?.text}</strong>
                 </div>
               )}
