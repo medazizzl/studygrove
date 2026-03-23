@@ -78,6 +78,7 @@ export default function StudyGrove() {
   const lastActivityRef = useRef(Date.now());
   const inactivityRef = useRef(null);
   const trackActivityRef = useRef(null);
+  const isInactiveRef = useRef(false);
   const [invisible, setInvisible] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [pomodoroMode, setPomodoroMode] = useState(false);
@@ -387,18 +388,15 @@ export default function StudyGrove() {
 
   useEffect(()=>{
     if(studying && !paused){
-      trackActivityRef.current=()=>{lastActivityRef.current=Date.now();setIsInactive(false);};
+      trackActivityRef.current=()=>{lastActivityRef.current=Date.now();setIsInactive(false);isInactiveRef.current=false;};
       window.addEventListener("mousemove",trackActivityRef.current);
       window.addEventListener("keydown",trackActivityRef.current);
       window.addEventListener("touchstart",trackActivityRef.current);
       inactivityRef.current=setInterval(()=>{
-        if(Date.now()-lastActivityRef.current>300000) setIsInactive(true);
+        if(Date.now()-lastActivityRef.current>300000){setIsInactive(true);isInactiveRef.current=true;}
       },10000);
       timerRef.current=setInterval(()=>{
-        setIsInactive(inactive=>{
-          if(!inactive) setSessionSecs(s=>s+1);
-          return inactive;
-        });
+        if(!isInactiveRef.current) setSessionSecs(s=>s+1);
       },1000);
       if(isPro){
         rotateQuote(selectedSubject);
@@ -415,7 +413,7 @@ export default function StudyGrove() {
         trackActivityRef.current=null;
       }
       if(!paused){
-        setIsInactive(false);
+        setIsInactive(false);isInactiveRef.current=false;
         if(quoteTimer){clearInterval(quoteTimer);setQuoteTimer(null);}
         setCurrentQuote("");
       }
@@ -1737,8 +1735,8 @@ export default function StudyGrove() {
                 <div style={{fontSize:11,color:T.sub,marginTop:2}}>Day Streak</div>
               </div>
               <div style={{background:T.surface,borderRadius:10,padding:12,textAlign:"center"}}>
-                <div style={{fontSize:18,fontWeight:900,color:"#a855f7"}}>{showSessionSummary.level.icon} Lv.{showSessionSummary.level.level}</div>
-                <div style={{fontSize:11,color:T.sub,marginTop:2}}>{showSessionSummary.level.name}</div>
+                <div style={{fontSize:18,fontWeight:900,color:"#a855f7"}}>{showSessionSummary.levelData.icon} Lv.{showSessionSummary.levelData.level}</div>
+                <div style={{fontSize:11,color:T.sub,marginTop:2}}>{showSessionSummary.levelData.title}</div>
               </div>
             </div>
             {/* XP breakdown */}
@@ -1746,16 +1744,16 @@ export default function StudyGrove() {
               {showSessionSummary.xpBreakdown.map((b,i)=><div key={i} style={{padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>{b}</div>)}
             </div>
             {/* Level progress bar */}
-            {showSessionSummary.level.next&&(
+            {showSessionSummary.levelData.next&&(
               <div style={{marginBottom:16}}>
                 <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T.sub,marginBottom:4}}>
-                  <span>Level {showSessionSummary.level.level} → {showSessionSummary.level.level+1}</span>
-                  <span style={{color:"#a855f7"}}>{showSessionSummary.level.xpIntoLevel} / {showSessionSummary.level.xpNeeded} XP</span>
+                  <span>Level {showSessionSummary.levelData.level} → {showSessionSummary.levelData.level+1}</span>
+                  <span style={{color:"#a855f7"}}>{showSessionSummary.levelData.current} / {showSessionSummary.levelData.needed} XP</span>
                 </div>
                 <div style={{height:8,background:T.border,borderRadius:4}}>
-                  <div style={{height:"100%",background:"linear-gradient(90deg,#a855f7,#7c3aed)",borderRadius:4,width:`${showSessionSummary.level.progress}%`,transition:"width 0.8s"}}/>
+                  <div style={{height:"100%",background:"linear-gradient(90deg,#a855f7,#7c3aed)",borderRadius:4,width:`${showSessionSummary.levelData.percent}%`,transition:"width 0.8s"}}/>
                 </div>
-                <div style={{fontSize:11,color:T.sub,marginTop:4}}>Next reward: {showSessionSummary.level.next.reward||"Keep going!"} · {showSessionSummary.level.xpNeeded-showSessionSummary.level.xpIntoLevel} XP away</div>
+                <div style={{fontSize:11,color:T.sub,marginTop:4}}>Next reward: {showSessionSummary.levelData.reward||"Keep going!"} · {showSessionSummary.levelData.needed-showSessionSummary.levelData.current} XP away</div>
               </div>
             )}
             <button style={{...css.btn,width:"100%",padding:12}} onClick={()=>setShowSessionSummary(null)}>Let's Go 🚀</button>
