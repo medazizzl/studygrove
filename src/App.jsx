@@ -74,11 +74,6 @@ export default function StudyGrove() {
   const [sessionXP, setSessionXP] = useState(0);
   const [levelUpData, setLevelUpData] = useState(null);
   const [showSessionSummary, setShowSessionSummary] = useState(null);
-  const [isInactive, setIsInactive] = useState(false);
-  const lastActivityRef = useRef(Date.now());
-  const inactivityRef = useRef(null);
-  const trackActivityRef = useRef(null);
-  const isInactiveRef = useRef(false);
   const [invisible, setInvisible] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [pomodoroMode, setPomodoroMode] = useState(false);
@@ -388,15 +383,8 @@ export default function StudyGrove() {
 
   useEffect(()=>{
     if(studying && !paused){
-      trackActivityRef.current=()=>{lastActivityRef.current=Date.now();setIsInactive(false);isInactiveRef.current=false;};
-      window.addEventListener("mousemove",trackActivityRef.current);
-      window.addEventListener("keydown",trackActivityRef.current);
-      window.addEventListener("touchstart",trackActivityRef.current);
-      inactivityRef.current=setInterval(()=>{
-        if(Date.now()-lastActivityRef.current>300000){setIsInactive(true);isInactiveRef.current=true;}
-      },10000);
       timerRef.current=setInterval(()=>{
-        if(!isInactiveRef.current) setSessionSecs(s=>s+1);
+        setSessionSecs(s=>s+1);
       },1000);
       if(isPro){
         rotateQuote(selectedSubject);
@@ -405,20 +393,12 @@ export default function StudyGrove() {
       }
     }else{
       clearInterval(timerRef.current);
-      clearInterval(inactivityRef.current);
-      if(trackActivityRef.current){
-        window.removeEventListener("mousemove",trackActivityRef.current);
-        window.removeEventListener("keydown",trackActivityRef.current);
-        window.removeEventListener("touchstart",trackActivityRef.current);
-        trackActivityRef.current=null;
-      }
       if(!paused){
-        setIsInactive(false);isInactiveRef.current=false;
         if(quoteTimer){clearInterval(quoteTimer);setQuoteTimer(null);}
         setCurrentQuote("");
       }
     }
-    return()=>{clearInterval(timerRef.current);clearInterval(inactivityRef.current);};
+    return()=>{clearInterval(timerRef.current);};
   },[studying, paused]);
 
   useEffect(()=>{
@@ -468,7 +448,6 @@ export default function StudyGrove() {
           subject_minutes:{...(stats.subject_minutes||{}),[selectedSubject]:((stats.subject_minutes||{})[selectedSubject]||0)+mins},
           invisible_minutes:invisible?(stats.invisible_minutes||0)+mins:(stats.invisible_minutes||0),
           total_xp:xpResult.newXP,
-          [xpResult.dailyKey]:xpResult.dailySoFar,
         };
         const ns=await updateStreak(nsBase,mins);
         let ach=ns.achievements||[];
@@ -1070,20 +1049,11 @@ export default function StudyGrove() {
       let ach=ns.achievements||[];
       if(ns.tasks_completed>=10)ach=unlockAchievement("task_slayer",ach);
       if(ns.tasks_completed>=50)ach=unlockAchievement("task_master",ach);
-      // XP for task — 5 XP, anti-cheat: track by task ID, cap 50/day
-      const todayStr=new Date().toISOString().slice(0,10);
-      const taskXpKey=`task_xp_${todayStr}`;
-      const taskIdKey=`completed_tasks_${todayStr}`;
-      const completedToday=JSON.parse(localStorage.getItem(taskIdKey)||"[]");
-      if(!completedToday.includes(task.id) && (ns[taskXpKey]||0)<50){
-        const xpGain=5;
-        ns.total_xp=(ns.total_xp||0)+xpGain;
-        ns[taskXpKey]=(ns[taskXpKey]||0)+xpGain;
-        completedToday.push(task.id);
-        localStorage.setItem(taskIdKey,JSON.stringify(completedToday));
-        setTaskXpPopup(`+${xpGain} XP`);
-        setTimeout(()=>setTaskXpPopup(null),2000);
-      }
+      // XP for task completion — +5 XP
+      const xpGain=5;
+      ns.total_xp=(ns.total_xp||0)+xpGain;
+      setTaskXpPopup(`+${xpGain} XP`);
+      setTimeout(()=>setTaskXpPopup(null),2000);
       ns.achievements=ach;
       await saveStats(ns);
     }
@@ -2003,11 +1973,7 @@ export default function StudyGrove() {
                 </div>
               );})()}
               {/* Inactivity warning */}
-              {studying&&isInactive&&(
-                <div style={{margin:"8px 0",padding:"8px 14px",background:"#f59e0b18",border:"1px solid #f59e0b",borderRadius:10,fontSize:12,color:"#f59e0b",textAlign:"center"}}>
-                  ⏸ Study paused due to inactivity — move your mouse or tap to resume XP
-                </div>
-              )}
+
               {studying&&(
                 <div style={{margin:"12px 0",padding:"10px 16px",background:T.surface,borderRadius:10,border:`1px solid ${T.border}`,fontSize:13,color:T.sub,fontStyle:"italic",textAlign:"center",minHeight:40}}>
                   {currentQuote?`"${currentQuote}"`:<span style={{color:T.sub,fontSize:12}}>💬 Quote will appear while studying...</span>}
