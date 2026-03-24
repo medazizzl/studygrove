@@ -594,7 +594,7 @@ export default function StudyGrove() {
         // Enrich with profile data
         const enriched=await Promise.all(mems.map(async m=>{
           const{data:p}=await supabase.from("profiles").select("username,avatar_url,stats").eq("id",m.user_id).single();
-          return{...m,username:p?.username||"?",avatar_url:p?.avatar_url||null,weekly_minutes:p?.stats?.weekly_minutes||0,total_minutes:p?.stats?.total_minutes||0};
+          return{...m,username:p?.username||"?",avatar_url:p?.avatar_url||null,weekly_minutes:p?.stats?.weekly_minutes||0,total_minutes:p?.stats?.total_minutes||0,study_history:p?.stats?.study_history||{}};
         }));
         membersMap[c.id]=enriched;
       }
@@ -647,10 +647,18 @@ export default function StudyGrove() {
     const now=new Date();
     const totalDays=Math.ceil((endDate-startDate)/(1000*60*60*24));
     const daysLeft=Math.max(0,Math.ceil((endDate-now)/(1000*60*60*24)));
-    const dayNum=totalDays-daysLeft+1;
+    const dayNum=Math.min(totalDays-daysLeft+1,totalDays);
     const members=(membersData||[]).filter(m=>m.accepted).map(m=>{
-      // Estimate progress — use weekly_minutes as proxy for challenge period
-      const progress=Math.min(m.weekly_minutes||0,goalMins);
+      // Use study_history to sum minutes from challenge start date onwards
+      const startStr=startDate.toISOString().slice(0,10);
+      let progressMins=0;
+      const history=m.study_history||{};
+      Object.entries(history).forEach(([date,mins])=>{
+        if(date>=startStr) progressMins+=mins;
+      });
+      // Fallback: if no study_history, use total_minutes as rough estimate
+      if(progressMins===0&&m.total_minutes>0) progressMins=Math.min(m.total_minutes,goalMins);
+      const progress=Math.min(progressMins,goalMins);
       return{...m,progress,pct:Math.min((progress/goalMins)*100,100)};
     }).sort((a,b)=>b.progress-a.progress);
     return{goalMins,daysLeft,dayNum,totalDays,members};
@@ -1356,7 +1364,7 @@ export default function StudyGrove() {
     {id:"weekly_tasks15", title:"Taskmaster",       desc:"Complete 15 tasks this week",        icon:"🗡️", xp:40, color:"#f59e0b", diff:"Medium",
      check:()=>tasks.filter(t=>t.done).length>=15},
     {id:"weekly_10hours", title:"Grinder",          desc:"Study 10+ hours this week",          icon:"⚡", xp:60, color:"#ef4444", diff:"Hard",
-     check:()=>weeklyBarData.reduce((a,d)=>a+d.mins,0)>=600},
+     check:()=>(stats.weekly_minutes||0)>=600},
     {id:"weekly_streak7", title:"Streak Keeper",    desc:"Maintain a 7-day streak",            icon:"🔥", xp:75, color:"#ef4444", diff:"Hard",
      check:()=>(stats.streak||0)>=7},
     {id:"weekly_social",  title:"Group Scholar",    desc:"Study 3+ sessions with group online",icon:"🤝", xp:40, color:"#6366f1", diff:"Medium",
@@ -1387,7 +1395,7 @@ export default function StudyGrove() {
 
   const getChallengeProgress=(challenge)=>{
     const today_mins=stats.today_minutes||0;
-    const weekly_mins=weeklyBarData.reduce((a,d)=>a+d.mins,0);
+    const weekly_mins=stats.weekly_minutes||0;
     switch(challenge.id){
       case "daily_1hour":   return{cur:Math.min(today_mins,60),max:60};
       case "daily_2hour":   return{cur:Math.min(today_mins,120),max:120};
