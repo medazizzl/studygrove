@@ -648,16 +648,14 @@ export default function StudyGrove() {
     const totalDays=Math.ceil((endDate-startDate)/(1000*60*60*24));
     const daysLeft=Math.max(0,Math.ceil((endDate-now)/(1000*60*60*24)));
     const dayNum=Math.min(totalDays-daysLeft+1,totalDays);
+    const startStr=startDate.toISOString().slice(0,10);
     const members=(membersData||[]).filter(m=>m.accepted).map(m=>{
-      // Use study_history to sum minutes from challenge start date onwards
-      const startStr=startDate.toISOString().slice(0,10);
+      // Sum study_history from challenge start date onwards — only source of truth
       let progressMins=0;
       const history=m.study_history||{};
       Object.entries(history).forEach(([date,mins])=>{
         if(date>=startStr) progressMins+=mins;
       });
-      // Fallback: if no study_history, use total_minutes as rough estimate
-      if(progressMins===0&&m.total_minutes>0) progressMins=Math.min(m.total_minutes,goalMins);
       const progress=Math.min(progressMins,goalMins);
       return{...m,progress,pct:Math.min((progress/goalMins)*100,100)};
     }).sort((a,b)=>b.progress-a.progress);
@@ -1050,8 +1048,9 @@ export default function StudyGrove() {
 
   const toggleTask=async(task)=>{
     const done=!task.done;
-    await supabase.from("tasks").update({done}).eq("id",task.id);
-    setTasks(prev=>prev.map(t=>t.id===task.id?{...t,done}:t));
+    const done_at=done?new Date().toISOString():null;
+    await supabase.from("tasks").update({done,done_at}).eq("id",task.id);
+    setTasks(prev=>prev.map(t=>t.id===task.id?{...t,done,done_at}:t));
     if(done){
       const ns={...stats,tasks_completed:(stats.tasks_completed||0)+1};
       let ach=ns.achievements||[];
@@ -1344,17 +1343,23 @@ export default function StudyGrove() {
   })();
 
   // ── CHALLENGES ──────────────────────────────────────────────────────────────
+  // Count tasks completed today (based on done_at date or created_at as fallback)
+  const todayStr=localDateStr();
+  const weekStart=(()=>{const d=new Date();const mon=new Date(d);mon.setDate(d.getDate()-((d.getDay()+6)%7));return `${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,"0")}-${String(mon.getDate()).padStart(2,"0")}`;})();
+  const tasksCompletedToday=tasks.filter(t=>t.done&&(t.done_at||t.updated_at||t.created_at||"").slice(0,10)===todayStr).length;
+  const tasksCompletedThisWeek=tasks.filter(t=>t.done&&(t.done_at||t.updated_at||t.created_at||"").slice(0,10)>=weekStart).length;
+
   const DAILY_CHALLENGES=[
     {id:"daily_early",    title:"Morning Focus",    desc:"Study before 11AM",                  icon:"🌅", xp:15, color:"#22c55e", diff:"Easy",
      check:()=>{const h=new Date().getHours();return (stats.early_sessions||0)>0||(studying&&h<11);}},
     {id:"daily_tasks3",   title:"Task Crusher",     desc:"Complete 3 tasks today",             icon:"✅", xp:10, color:"#22c55e", diff:"Easy",
-     check:()=>tasks.filter(t=>t.done).length>=3},
+     check:()=>tasksCompletedToday>=3},
     {id:"daily_pomo4",    title:"Pomodoro Master",  desc:"Complete 4 pomodoros today",         icon:"🍅", xp:25, color:"#f59e0b", diff:"Medium",
      check:()=>pomodorosToday>=4},
     {id:"daily_1hour",    title:"Focused Study",    desc:"Study 1 hour today",                 icon:"⏱", xp:20, color:"#f59e0b", diff:"Medium",
-     check:()=>(stats.today_minutes||0)>=60, chainedBy:"daily_2hour"},
-    {id:"daily_2hour",    title:"Deep Work",        desc:"Study 2 hours today",                icon:"🔥", xp:35, color:"#ef4444", diff:"Hard",
-     check:()=>(stats.today_minutes||0)>=120},
+     check:()=>(stats.today_minutes||0)>=60},
+    {id:"daily_2hour",    title:"Deep Work",        desc:"Study 2 hours today (bonus if you did 1h)",icon:"🔥", xp:15, color:"#ef4444", diff:"Hard",
+     requires:"daily_1hour", check:()=>(stats.today_minutes||0)>=120},
     {id:"daily_social",   title:"Study Together",   desc:"Study while a friend is studying",   icon:"👥", xp:15, color:"#6366f1", diff:"Easy",
      check:()=>studying&&onlineMembers.some(m=>m.user_id!==authUser?.id&&m.status==="studying")},
   ];
@@ -1362,7 +1367,7 @@ export default function StudyGrove() {
     {id:"weekly_5days",   title:"Consistent",       desc:"Study 5 out of 7 days this week",   icon:"📅", xp:50, color:"#f59e0b", diff:"Medium",
      check:()=>weeklyBarData.filter(d=>d.mins>0).length>=5},
     {id:"weekly_tasks15", title:"Taskmaster",       desc:"Complete 15 tasks this week",        icon:"🗡️", xp:40, color:"#f59e0b", diff:"Medium",
-     check:()=>tasks.filter(t=>t.done).length>=15},
+     check:()=>tasksCompletedThisWeek>=15},
     {id:"weekly_10hours", title:"Grinder",          desc:"Study 10+ hours this week",          icon:"⚡", xp:60, color:"#ef4444", diff:"Hard",
      check:()=>(stats.weekly_minutes||0)>=600},
     {id:"weekly_streak7", title:"Streak Keeper",    desc:"Maintain a 7-day streak",            icon:"🔥", xp:75, color:"#ef4444", diff:"Hard",
@@ -1372,19 +1377,23 @@ export default function StudyGrove() {
   ];
 
   const getChallengeKey=(id,type)=>{
+    const todayStr=localDateStr();
+    if(type==="daily") return `challenge_${id}_${todayStr}`;
+    // Get Monday of current week in local time
     const today=new Date();
-    if(type==="daily") return `challenge_${id}_${today.toISOString().slice(0,10)}`;
     const mon=new Date(today);mon.setDate(today.getDate()-((today.getDay()+6)%7));
-    return `challenge_${id}_week_${mon.toISOString().slice(0,10)}`;
+    const monStr=`${mon.getFullYear()}-${String(mon.getMonth()+1).padStart(2,"0")}-${String(mon.getDate()).padStart(2,"0")}`;
+    return `challenge_${id}_week_${monStr}`;
   };
   const isChallengeCompleted=(id,type)=>!!(stats[getChallengeKey(id,type)]);
 
   const claimChallenge=async(challenge,type)=>{
     if(isChallengeCompleted(challenge.id,type))return;
     if(!challenge.check())return;
+    // If challenge requires another to be claimed first, enforce it
+    if(challenge.requires&&!isChallengeCompleted(challenge.requires,type))return;
     const key=getChallengeKey(challenge.id,type);
-    const isChained=challenge.chainedBy&&isChallengeCompleted(challenge.chainedBy,type);
-    const xpGain=isChained?0:challenge.xp;
+    const xpGain=challenge.xp;
     const ns={...stats,[key]:true,total_xp:(stats.total_xp||0)+xpGain};
     await saveStats(ns);
     if(xpGain>0){
@@ -1399,12 +1408,12 @@ export default function StudyGrove() {
     switch(challenge.id){
       case "daily_1hour":   return{cur:Math.min(today_mins,60),max:60};
       case "daily_2hour":   return{cur:Math.min(today_mins,120),max:120};
-      case "daily_tasks3":  return{cur:Math.min(tasks.filter(t=>t.done).length,3),max:3};
+      case "daily_tasks3":  return{cur:Math.min(tasksCompletedToday,3),max:3};
       case "daily_pomo4":   return{cur:Math.min(pomodorosToday,4),max:4};
       case "daily_early":   return{cur:(stats.early_sessions||0)>0?1:0,max:1};
       case "daily_social":  return{cur:studying&&onlineMembers.some(m=>m.user_id!==authUser?.id&&m.status==="studying")?1:0,max:1};
       case "weekly_5days":  return{cur:Math.min(weeklyBarData.filter(d=>d.mins>0).length,5),max:5};
-      case "weekly_tasks15":return{cur:Math.min(tasks.filter(t=>t.done).length,15),max:15};
+      case "weekly_tasks15":return{cur:Math.min(tasksCompletedThisWeek,15),max:15};
       case "weekly_10hours":return{cur:Math.min(weekly_mins,600),max:600};
       case "weekly_streak7":return{cur:Math.min(stats.streak||0,7),max:7};
       case "weekly_social": return{cur:Math.min(stats.group_sessions_online||0,3),max:3};
@@ -2583,13 +2592,6 @@ export default function StudyGrove() {
             challengeTab={challengeTab} setChallengeTab={setChallengeTab}
             DAILY_CHALLENGES={DAILY_CHALLENGES} WEEKLY_CHALLENGES={WEEKLY_CHALLENGES}
             isChallengeCompleted={isChallengeCompleted} getChallengeProgress={getChallengeProgress} claimChallenge={claimChallenge}
-            socialChallenges={socialChallenges} myChallengeMembers={myChallengeMembers} authUser={authUser}
-            showCreateChallenge={showCreateChallenge} setShowCreateChallenge={setShowCreateChallenge}
-            challengeForm={challengeForm} setChallengeForm={setChallengeForm}
-            challengeFormError={challengeFormError} setChallengeFormError={setChallengeFormError}
-            createSocialChallenge={createSocialChallenge}
-            acceptSocialChallenge={acceptSocialChallenge} declineSocialChallenge={declineSocialChallenge}
-            getSocialChallengeProgress={getSocialChallengeProgress}
           />
         )}
 
